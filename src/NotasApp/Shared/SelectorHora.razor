@@ -1,0 +1,55 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<div class="rueda" role="group" aria-label="Hora">
+    <div class="rueda-marca"></div>
+    <div class="rueda-col" tabindex="0" aria-label="Horas" @ref="colHoras">
+        @for (int h = 0; h < 24; h++) { <div class="rueda-item">@h.ToString("D2")</div> }
+    </div>
+    <span class="rueda-sep">:</span>
+    <div class="rueda-col" tabindex="0" aria-label="Minutos" @ref="colMinutos">
+        @for (int m = 0; m < 60; m += PasoMinutos) { <div class="rueda-item">@m.ToString("D2")</div> }
+    </div>
+</div>
+
+@code {
+    public const int PasoMinutos = 5;
+
+    [Parameter] public TimeOnly Hora { get; set; }
+    [Parameter] public EventCallback<TimeOnly> HoraChanged { get; set; }
+
+    private ElementReference colHoras, colMinutos;
+    private DotNetObjectReference<SelectorHora>? referencia;
+    private IJSObjectReference? ruedaHoras, ruedaMinutos;
+
+    protected override async Task OnAfterRenderAsync(bool primera)
+    {
+        if (!primera) return;
+        referencia = DotNetObjectReference.Create(this);
+        ruedaHoras = await JS.InvokeAsync<IJSObjectReference>("notas.rueda", colHoras, referencia, nameof(FijarHora), Hora.Hour);
+        ruedaMinutos = await JS.InvokeAsync<IJSObjectReference>("notas.rueda", colMinutos, referencia, nameof(FijarMinuto), Hora.Minute / PasoMinutos);
+    }
+
+    [JSInvokable]
+    public Task FijarHora(int indice) => Cambiar(new TimeOnly(indice, Hora.Minute));
+
+    [JSInvokable]
+    public Task FijarMinuto(int indice) => Cambiar(new TimeOnly(Hora.Hour, indice * PasoMinutos));
+
+    private async Task Cambiar(TimeOnly hora)
+    {
+        Hora = hora;
+        await HoraChanged.InvokeAsync(hora);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (ruedaHoras is not null) await ruedaHoras.InvokeVoidAsync("destroy");
+            if (ruedaMinutos is not null) await ruedaMinutos.InvokeVoidAsync("destroy");
+        }
+        catch (JSDisconnectedException) { }
+        referencia?.Dispose();
+    }
+}

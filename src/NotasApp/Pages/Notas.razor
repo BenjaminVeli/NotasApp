@@ -1,0 +1,8 @@
+@page "/"
+
+<ListaItems Tipo="@TipoItem.Nota" Resaltar="Id" ResaltarVez="N" />
+
+@code {
+    [SupplyParameterFromQuery] public Guid? Id { get; set; }
+    [SupplyParameterFromQuery] public long N { get; set; }
+}

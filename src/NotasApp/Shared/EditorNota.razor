@@ -1,0 +1,47 @@
+<div class="editor" @onkeydown="Tecla">
+    <input class="campo" placeholder="Título" @bind="titulo" @bind:event="oninput" @ref="campoTitulo" />
+    <textarea class="campo" rows="3" placeholder="Escribe la nota…" @bind="contenido" @bind:event="oninput"></textarea>
+    <FilaFecha @bind-Fecha="fecha" />
+    <div class="editor-pie">
+        <span class="pista">@Fechas.Larga(fecha) — Ctrl+Enter para guardar · Esc para cancelar</span>
+        <button class="btn-secundario" @onclick="AlCancelar">Cancelar</button>
+        <button class="btn-primario" disabled="@string.IsNullOrWhiteSpace(titulo)" @onclick="Guardar">Guardar</button>
+    </div>
+</div>
+
+@code {
+    public record Datos(string Titulo, string Contenido, DateOnly Fecha);
+
+    [Parameter] public Item? Nota { get; set; }
+    [Parameter] public DateOnly FechaInicial { get; set; }
+    [Parameter] public EventCallback<Datos> AlGuardar { get; set; }
+    [Parameter] public EventCallback AlCancelar { get; set; }
+
+    private string titulo = "", contenido = "";
+    private DateOnly fecha;
+    private ElementReference campoTitulo;
+
+    protected override void OnInitialized()
+    {
+        titulo = Nota?.Titulo ?? "";
+        contenido = Nota?.Contenido ?? "";
+        fecha = Nota?.Fecha ?? (FechaInicial == default ? Fechas.Hoy : FechaInicial);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool primera)
+    {
+        if (primera) await campoTitulo.FocusAsync();
+    }
+
+    private async Task Guardar()
+    {
+        if (string.IsNullOrWhiteSpace(titulo)) return;
+        await AlGuardar.InvokeAsync(new Datos(titulo.Trim(), contenido.Trim(), fecha));
+    }
+
+    private async Task Tecla(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") await AlCancelar.InvokeAsync();
+        else if (e.Key == "Enter" && e.CtrlKey) await Guardar();
+    }
+}

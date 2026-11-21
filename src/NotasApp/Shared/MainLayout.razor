@@ -1,0 +1,109 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject ItemService Items
+@inject CategoriaService Categorias
+@inject ConexionService Conexion
+@inject NavegacionService Navegacion
+@inject NavigationManager Nav
+
+<div class="app">
+    <aside class="sidebar">
+        <div class="buscar" title="Búsqueda global (Ctrl+K)">
+            <i class="ti ti-search"></i> Buscar
+            <kbd>Ctrl K</kbd>
+        </div>
+
+        <NavLink class="nv" ActiveClass="on" href="" Match="NavLinkMatch.All">
+            <i class="ti ti-note" style="color:var(--yellow)"></i>Notas
+            <span class="cuenta">@Cuenta(TipoItem.Nota)</span>
+        </NavLink>
+        <NavLink class="nv" ActiveClass="on" href="reuniones">
+            <i class="ti ti-calendar" style="color:var(--accent)"></i>Reuniones
+            <span class="cuenta">@Cuenta(TipoItem.Reunion)</span>
+        </NavLink>
+        <NavLink class="nv" ActiveClass="on" href="codigo" Match="NavLinkMatch.All">
+            <i class="ti ti-code" style="color:var(--purple)"></i>Código
+        </NavLink>
+
+        <div class="seccion">Categorías</div>
+        @foreach (var c in categorias)
+        {
+            var (icono, color) = IconoCategoria(c.Lenguaje);
+            <NavLink class="nv" ActiveClass="on" href="@($"codigo/{c.Id}")">
+                <i class="ti @icono" style="color:@color"></i>@c.Nombre
+                @if (c.Archivos > 0) { <span class="cuenta">@c.Archivos</span> }
+            </NavLink>
+        }
+
+        <div class="pie-sidebar">
+            <div class="estado @Conexion.Estado.ToString().ToLowerInvariant()" title="@TooltipEstado">
+                <span class="punto"></span>@TextoEstado
+            </div>
+            <NavLink class="icono" ActiveClass="on" href="configuracion" title="Configuración">
+                <i class="ti ti-settings"></i>
+            </NavLink>
+        </div>
+    </aside>
+
+    <main class="main">
+        @Body
+    </main>
+</div>
+
+@code {
+    private Dictionary<string, int> cuentas = [];
+    private List<CategoriaResumen> categorias = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        Items.Cambio += AlCambiar;
+        Conexion.Cambio += AlCambiarConexion;
+        Navegacion.Solicitud += Navegar;
+        await Cargar();
+    }
+
+    protected override void OnAfterRender(bool primera)
+    {
+        // Ruta pedida antes de que existiera la ventana (p. ej. clic en un aviso con la app oculta).
+        if (primera && Navegacion.TomarPendiente() is { } ruta) Navegar(ruta);
+    }
+
+    private void Navegar(string ruta) => _ = InvokeAsync(() => Nav.NavigateTo(ruta));
+
+    private async Task Cargar()
+    {
+        cuentas = await Items.ContarPendientesAsync();
+        categorias = await Categorias.ListarAsync();
+    }
+
+    private string Cuenta(string tipo) => cuentas.TryGetValue(tipo, out var n) && n > 0 ? n.ToString() : "";
+
+    private void AlCambiar() => _ = InvokeAsync(async () => { await Cargar(); StateHasChanged(); });
+    private void AlCambiarConexion() => _ = InvokeAsync(StateHasChanged);
+
+    private string TextoEstado => Conexion.Estado switch
+    {
+        EstadoConexion.EnLinea => "En línea",
+        EstadoConexion.Sincronizando => "Sincronizando",
+        _ => "Sin conexión",
+    };
+
+    private string TooltipEstado => !Conexion.Configurada
+        ? "Neon no está configurado: los datos se guardan solo en este equipo"
+        : Conexion.UltimoError ?? "Conectado a Neon";
+
+    public static (string Icono, string Color) IconoCategoria(string lenguaje) => lenguaje switch
+    {
+        "sql" => ("ti-database", "var(--cyan)"),
+        "css" => ("ti-brand-css3", "var(--orange)"),
+        "csharp" => ("ti-hash", "var(--success)"),
+        _ => ("ti-file-code", "var(--text-2)"),
+    };
+
+    public void Dispose()
+    {
+        Items.Cambio -= AlCambiar;
+        Conexion.Cambio -= AlCambiarConexion;
+        Navegacion.Solicitud -= Navegar;
+    }
+}

@@ -1,0 +1,26 @@
+@* Selector de día para los editores: Hoy / Mañana / Otro día (calendario). *@
+<div class="fila-fecha">
+    <span class="ch @(Fecha == Fechas.Hoy ? "on" : "")" @onclick="() => Fijar(Fechas.Hoy)">Hoy</span>
+    <span class="ch @(Fecha == Fechas.Hoy.AddDays(1) ? "on" : "")" @onclick="() => Fijar(Fechas.Hoy.AddDays(1))">Mañana</span>
+    <span class="ch @(EsOtroDia ? "on" : "")" @onclick="() => abierto = !abierto">
+        <i class="ti ti-calendar"></i> @(EsOtroDia ? Fechas.Corta(Fecha) : "Otro día")
+    </span>
+    @if (abierto)
+    {
+        <Calendario Desde="Fecha" Hasta="Fecha" AlElegir="r => Fijar(r.Desde)" AlCerrar="() => abierto = false" />
+    }
+</div>
+
+@code {
+    [Parameter] public DateOnly Fecha { get; set; }
+    [Parameter] public EventCallback<DateOnly> FechaChanged { get; set; }
+
+    private bool abierto;
+    private bool EsOtroDia => Fecha != Fechas.Hoy && Fecha != Fechas.Hoy.AddDays(1);
+
+    private async Task Fijar(DateOnly f)
+    {
+        Fecha = f;
+        await FechaChanged.InvokeAsync(f);
+    }
+}

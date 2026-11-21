@@ -1,0 +1,375 @@
+@* Lista de notas o reuniones con filtros combinables (fecha, rango, tipo y estado). *@
+@implements IAsyncDisposable
+@inject ItemService Items
+@inject IJSRuntime JS
+
+<div class="pagina">
+    <div class="cabecera">
+        <h1>@Titulo</h1>
+        <button class="btn-primario" @onclick="AbrirNueva"><i class="ti ti-plus"></i> Nueva</button>
+    </div>
+
+    <div class="chips">
+        <span class="ch @On(filtro.Fecha == FiltroFecha.Todo)" @onclick="() => FiltrarFecha(FiltroFecha.Todo)">Todo</span>
+        <span class="ch @On(filtro.Fecha == FiltroFecha.Hoy)" @onclick="() => FiltrarFecha(FiltroFecha.Hoy)">Hoy</span>
+        <span class="ch @On(filtro.Fecha == FiltroFecha.Manana)" @onclick="() => FiltrarFecha(FiltroFecha.Manana)">Mañana</span>
+        <span class="ch @On(filtro.Fecha == FiltroFecha.Semana)" @onclick="() => FiltrarFecha(FiltroFecha.Semana)">Semana</span>
+        <span class="ch @On(filtro.Fecha == FiltroFecha.Rango)" @onclick="() => calendarioAbierto = !calendarioAbierto">
+            <i class="ti ti-calendar"></i> @(filtro.Fecha == FiltroFecha.Rango ? filtro.EtiquetaRango : "Elegir día")
+        </span>
+        @if (calendarioAbierto)
+        {
+            <Calendario Rango="true" Desde="filtro.Dias?.Desde ?? default" Hasta="filtro.Dias?.Hasta ?? default" Marcas="DiasConPendientes"
+                        AlElegir="ElegirRango" AlCerrar="() => calendarioAbierto = false" />
+        }
+    </div>
+
+    <div class="filtros-2">
+        <div class="segmento" role="radiogroup" aria-label="Estado">
+            @foreach (var (e, texto) in Estados)
+            {
+                <button class="@On(filtro.Estado == e)" role="radio" aria-checked="@(filtro.Estado == e)" @onclick="() => filtro.Estado = e">@texto</button>
+            }
+        </div>
+        <button class="ch-tipo @On(filtro.AmbosTipos)" title="Mostrar también @(EsReunion ? "las notas" : "las reuniones")"
+                @onclick="() => { filtro.AmbosTipos = !filtro.AmbosTipos; editando = null; }">
+            <i class="ti @(EsReunion ? "ti-note" : "ti-calendar")"></i> @(EsReunion ? "Incluir notas" : "Incluir reuniones")
+        </button>
+        @if (filtro.Activo && !EsPorDefecto)
+        {
+            <button class="limpiar" @onclick="Limpiar">Restablecer</button>
+        }
+    </div>
+
+    @if (creando)
+    {
+        <div class="panel entrar">
+            <div class="panel-titulo">@(EsReunion ? "Nueva reunión" : "Nueva nota")</div>
+            @if (EsReunion)
+            {
+                <EditorReunion FechaInicial="FechaNueva" AlGuardar="GuardarReunion" AlCancelar="() => creando = false" />
+            }
+            else
+            {
+                <EditorNota FechaInicial="FechaNueva" AlGuardar="GuardarNota" AlCancelar="() => creando = false" />
+            }
+        </div>
+    }
+
+    <div class="lista @(Arrastrable ? "" : "sin-arrastre")" @ref="lista">
+        @foreach (var grupo in Visibles.GroupBy(i => ConCabeceras ? i.Fecha : default))
+        {
+            @if (ConCabeceras)
+            {
+                <div class="dia" @key="grupo.Key">@Fechas.Larga(grupo.Key)</div>
+            }
+            @foreach (var it in grupo)
+            {
+                var esReunion = it.Tipo == TipoItem.Reunion;
+                <div @key="it.Id" id="item-@it.Id"
+                     class="cd @On(it.Completado, "dn") @On(saliendo.Contains(it.Id), "salir") @On(resaltado == it.Id, "resaltar")">
+                    @if (editando == it.Id)
+                    {
+                        @if (esReunion)
+                        {
+                            <EditorReunion Reunion="it" AlGuardar="d => GuardarReunion(d, it.Id)" AlCancelar="() => editando = null" />
+                        }
+                        else
+                        {
+                            <EditorNota Nota="it" AlGuardar="d => GuardarNota(d, it.Id)" AlCancelar="() => editando = null" />
+                        }
+                    }
+                    else
+                    {
+                        <span class="ck" role="checkbox" aria-checked="@it.Completado" @onclick="() => Alternar(it)">
+                            @if (it.Completado) { <i class="ti ti-check"></i> }
+                        </span>
+                        <div class="cuerpo" @onclick="() => Editar(it.Id)">
+                            <div class="tt">@it.Titulo</div>
+                            @if (!string.IsNullOrWhiteSpace(it.Contenido)) { <div class="sub">@it.Contenido</div> }
+                        </div>
+                        @if (confirmando == it.Id)
+                        {
+                            <button class="btn-peligro" @onclick="() => Eliminar(it)">Eliminar</button>
+                            <button class="icono" title="Cancelar" @onclick="() => confirmando = null"><i class="ti ti-x"></i></button>
+                        }
+                        else
+                        {
+                            <button class="icono acciones" title="Eliminar" @onclick="() => confirmando = it.Id"><i class="ti ti-trash"></i></button>
+                        }
+                        @if (esReunion)
+                        {
+                            <span class="hora @On(EsPasada(it), "pasada")">@it.Hora?.ToString("HH:mm")</span>
+                        }
+                        else if (!ConCabeceras && it.Fecha != Fechas.Hoy)
+                        {
+                            <span class="fecha-nota">@Fechas.Corta(it.Fecha)</span>
+                        }
+                        <i class="ti ti-grip-vertical grip" title="Arrastrar para ordenar"></i>
+                    }
+                </div>
+            }
+        }
+    </div>
+
+    @if (cargado && !Visibles.Any() && !creando)
+    {
+        <EstadoVacio Icono="@(EsReunion ? "ti-calendar-event" : "ti-note")" Texto="@TextoVacio"
+                     Detalle="@(filtro.Activo ? "Prueba con otros filtros o crea una con el botón Nueva." : "Crea una con el botón Nueva.")" />
+    }
+</div>
+
+@code {
+    private static readonly (FiltroEstado, string)[] Estados =
+        [(FiltroEstado.Todas, "Todas"), (FiltroEstado.Pendientes, "Pendientes"), (FiltroEstado.Completadas, "Completadas")];
+
+    // Los filtros de cada sección se conservan al navegar entre secciones.
+    private static readonly Dictionary<string, FiltroItems> FiltrosGuardados = [];
+
+    /// <summary>Tipo principal de la sección: <see cref="TipoItem.Nota"/> o <see cref="TipoItem.Reunion"/>.</summary>
+    [Parameter, EditorRequired] public string Tipo { get; set; } = TipoItem.Nota;
+    /// <summary>Elemento a mostrar y resaltar (p. ej. al abrir la app desde un aviso).</summary>
+    [Parameter] public Guid? Resaltar { get; set; }
+    /// <summary>Cambia en cada pedido, para volver a resaltar el mismo elemento.</summary>
+    [Parameter] public long ResaltarVez { get; set; }
+
+    private List<Item> notas = [], reuniones = [];
+    private FiltroItems filtro = new();
+    private bool cargado, creando, calendarioAbierto;
+    private Guid? editando, confirmando, resaltado;
+    private (Guid?, long) ultimoResaltar;
+    private readonly HashSet<Guid> saliendo = [];
+    private ElementReference lista;
+    private DotNetObjectReference<ListaItems>? referencia;
+    private IJSObjectReference? sortable;
+
+    private bool EsReunion => Tipo == TipoItem.Reunion;
+    private List<Item> Principales => EsReunion ? reuniones : notas;
+    private string Titulo => filtro.AmbosTipos ? "Notas y reuniones" : EsReunion ? "Reuniones" : "Notas";
+
+    /// <summary>Solo se arrastra con un único tipo visible (el orden mezclado lo decide la fecha).</summary>
+    private bool Arrastrable => !filtro.AmbosTipos;
+
+    /// <summary>Cabeceras por día cuando hay reuniones y se ven varios días.</summary>
+    private bool ConCabeceras => (EsReunion || filtro.AmbosTipos) && filtro.VariosDias;
+
+    private IEnumerable<Item> Visibles
+    {
+        get
+        {
+            if (!filtro.AmbosTipos) return Principales.Where(filtro.Cumple);
+            // Mezclado: por día, primero las reuniones; dentro de cada tipo, el orden manual.
+            return notas.Concat(reuniones).Where(filtro.Cumple)
+                .OrderBy(i => i.Fecha)
+                .ThenBy(i => i.Tipo == TipoItem.Reunion ? 0 : 1)
+                .ThenBy(i => i.Orden);
+        }
+    }
+
+    private IReadOnlySet<DateOnly> DiasConPendientes =>
+        (filtro.AmbosTipos ? notas.Concat(reuniones) : Principales)
+            .Where(i => !i.Completado).Select(i => i.Fecha).ToHashSet();
+
+    private bool EsPorDefecto
+    {
+        get
+        {
+            var d = PorDefecto();
+            return filtro.Fecha == d.Fecha && filtro.Estado == d.Estado && filtro.AmbosTipos == d.AmbosTipos;
+        }
+    }
+
+    private string TextoVacio
+    {
+        get
+        {
+            var sujeto = filtro.AmbosTipos ? "notas ni reuniones" : EsReunion ? "reuniones" : "notas";
+            return $"No hay {sujeto}{filtro.EstadoTexto}{filtro.Periodo}";
+        }
+    }
+
+    private DateOnly FechaNueva => filtro.Fecha switch
+    {
+        FiltroFecha.Manana => Fechas.Hoy.AddDays(1),
+        FiltroFecha.Rango => filtro.Desde,
+        _ => Fechas.Hoy,
+    };
+
+    private static string On(bool activo, string clase = "on") => activo ? clase : "";
+
+    private static bool EsPasada(Item r) =>
+        !r.Completado && r.Fecha.ToDateTime(r.Hora ?? TimeOnly.MaxValue) < DateTime.Now;
+
+    // Reuniones: por defecto "Hoy", como en el mockup. Notas: todas las fechas.
+    private FiltroItems PorDefecto() => new() { Fecha = EsReunion ? FiltroFecha.Hoy : FiltroFecha.Todo };
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!FiltrosGuardados.TryGetValue(Tipo, out var guardado))
+            FiltrosGuardados[Tipo] = guardado = PorDefecto();
+        filtro = guardado;
+        await Recargar();
+        cargado = true;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Resaltar is not { } id || (Resaltar, ResaltarVez) == ultimoResaltar) return;
+        ultimoResaltar = (Resaltar, ResaltarVez);
+        await Recargar(); // pudo cambiar mientras la ventana estaba oculta
+        if (Principales.FirstOrDefault(i => i.Id == id) is not { } item) return;
+        MostrarItem(item);
+        // Quita y vuelve a poner la clase para que la animación se repita.
+        resaltado = null;
+        StateHasChanged();
+        await Task.Yield();
+        resaltado = id;
+        StateHasChanged();
+        await JS.InvokeVoidAsync("notas.verElemento", $"item-{id}");
+    }
+
+    protected override async Task OnAfterRenderAsync(bool primera)
+    {
+        if (!primera) return;
+        referencia = DotNetObjectReference.Create(this);
+        sortable = await JS.InvokeAsync<IJSObjectReference>("notas.sortable", lista, referencia);
+    }
+
+    private async Task Recargar()
+    {
+        notas = await Items.ListarAsync(TipoItem.Nota);
+        reuniones = await Items.ListarAsync(TipoItem.Reunion);
+    }
+
+    private void FiltrarFecha(FiltroFecha f)
+    {
+        filtro.Fecha = f;
+        editando = confirmando = null;
+    }
+
+    private void ElegirRango((DateOnly Desde, DateOnly Hasta) r)
+    {
+        if (r.Desde == r.Hasta && r.Desde == Fechas.Hoy) filtro.Fecha = FiltroFecha.Hoy;
+        else if (r.Desde == r.Hasta && r.Desde == Fechas.Hoy.AddDays(1)) filtro.Fecha = FiltroFecha.Manana;
+        else { filtro.Fecha = FiltroFecha.Rango; filtro.Desde = r.Desde; filtro.Hasta = r.Hasta; }
+        editando = confirmando = null;
+    }
+
+    private void Limpiar()
+    {
+        filtro = FiltrosGuardados[Tipo] = PorDefecto();
+        editando = confirmando = null;
+    }
+
+    private void AbrirNueva()
+    {
+        editando = null;
+        creando = true;
+    }
+
+    private void Editar(Guid id)
+    {
+        editando = id;
+        confirmando = null;
+        creando = false;
+    }
+
+    private async Task GuardarNota(EditorNota.Datos d) => await GuardarNota(d, null);
+
+    private async Task GuardarNota(EditorNota.Datos d, Guid? id)
+    {
+        Item item;
+        if (id is { } existente)
+        {
+            await Items.ActualizarNotaAsync(existente, d.Titulo, d.Contenido, d.Fecha);
+            item = notas.First(n => n.Id == existente);
+            (item.Titulo, item.Contenido, item.Fecha) = (d.Titulo, d.Contenido, d.Fecha);
+            editando = null;
+        }
+        else
+        {
+            item = await Items.CrearAsync(new Item { Tipo = TipoItem.Nota, Titulo = d.Titulo, Contenido = d.Contenido, Fecha = d.Fecha });
+            notas.Insert(0, item);
+            creando = false;
+        }
+        MostrarItem(item);
+    }
+
+    private async Task GuardarReunion(EditorReunion.Datos d) => await GuardarReunion(d, null);
+
+    private async Task GuardarReunion(EditorReunion.Datos d, Guid? id)
+    {
+        Item? item;
+        if (id is { } existente)
+        {
+            item = await Items.ActualizarReunionAsync(existente, d.Titulo, d.Contenido, d.Fecha, d.Hora);
+            editando = null;
+        }
+        else
+        {
+            item = await Items.CrearAsync(new Item
+            {
+                Tipo = TipoItem.Reunion, Titulo = d.Titulo, Contenido = d.Contenido, Fecha = d.Fecha, Hora = d.Hora,
+            });
+            creando = false;
+        }
+        await Recargar(); // el servicio recoloca la reunión según su hora
+        if (item is not null) MostrarItem(item);
+    }
+
+    /// <summary>Si el elemento quedó fuera de los filtros, los ajusta para que se vea.</summary>
+    private void MostrarItem(Item item)
+    {
+        if (!filtro.CumpleFecha(item.Fecha)) filtro.FijarDia(item.Fecha);
+        if (!filtro.CumpleEstado(item.Completado)) filtro.Estado = FiltroEstado.Todas;
+    }
+
+    private async Task Alternar(Item it)
+    {
+        // Si al cambiar de estado deja de cumplir el filtro, primero sale con animación.
+        if (!filtro.CumpleEstado(!it.Completado))
+        {
+            saliendo.Add(it.Id);
+            StateHasChanged();
+            await Task.Delay(220);
+            saliendo.Remove(it.Id);
+        }
+        it.Completado = !it.Completado;
+        await Items.AlternarCompletadoAsync(it.Id);
+    }
+
+    private async Task Eliminar(Item it)
+    {
+        confirmando = null;
+        saliendo.Add(it.Id);
+        StateHasChanged();
+        await Task.Delay(220); // deja terminar la animación de salida
+        await Items.EliminarAsync(it.Id);
+        (it.Tipo == TipoItem.Reunion ? reuniones : notas).RemoveAll(x => x.Id == it.Id);
+        saliendo.Remove(it.Id);
+    }
+
+    /// <summary>Llamado desde SortableJS al soltar una tarjeta.</summary>
+    [JSInvokable]
+    public async Task Mover(int desde, int hasta)
+    {
+        if (!Arrastrable || Reordenar.Mover(Principales, Visibles.ToList(), desde, hasta) is not { } nuevas) return;
+        if (EsReunion)
+        {
+            // Las reuniones no cambian de día al arrastrarlas: si se suelta en otro día,
+            // vuelve a su grupo (OrderBy es estable).
+            for (int n = 0; n < nuevas.Count; n++) nuevas[n].Orden = n;
+            reuniones = nuevas.OrderBy(r => r.Fecha).ToList();
+        }
+        else notas = nuevas;
+        StateHasChanged();
+        await Items.ReordenarAsync(Principales.Select(i => i.Id).ToList());
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try { if (sortable is not null) await sortable.InvokeVoidAsync("destroy"); }
+        catch (JSDisconnectedException) { }
+        referencia?.Dispose();
+    }
+}

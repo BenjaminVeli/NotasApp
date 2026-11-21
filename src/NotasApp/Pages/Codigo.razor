@@ -1,0 +1,23 @@
+@page "/codigo"
+@page "/codigo/{CategoriaId:guid}"
+@inject CategoriaService Categorias
+
+<div class="pagina" @key="CategoriaId">
+    <div class="cabecera">
+        <h1>@titulo</h1>
+        <button class="btn-primario" disabled><i class="ti ti-plus"></i> Nuevo archivo</button>
+    </div>
+    <EstadoVacio Icono="ti-file-code" Texto="Aún no hay archivos"
+                 Detalle="El editor de código (Monaco) llega en la Fase 6." />
+</div>
+
+@code {
+    [Parameter] public Guid? CategoriaId { get; set; }
+    private string titulo = "Código";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var lista = await Categorias.ListarAsync();
+        titulo = lista.FirstOrDefault(c => c.Id == CategoriaId)?.Nombre ?? "Código";
+    }
+}

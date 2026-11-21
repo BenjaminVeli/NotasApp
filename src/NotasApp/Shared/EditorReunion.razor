@@ -1,0 +1,68 @@
+<div class="editor-reunion" @onkeydown="Tecla">
+    <SelectorHora @bind-Hora="hora" />
+    <div class="editor">
+        <input class="campo" placeholder="Título de la reunión" @bind="titulo" @bind:event="oninput" @ref="campoTitulo" />
+        <textarea class="campo" rows="2" placeholder="Nota: qué llevar, de qué hablar…" @bind="contenido" @bind:event="oninput"></textarea>
+        <FilaFecha @bind-Fecha="fecha" />
+    </div>
+    <div class="editor-pie">
+        <span class="pista">@Fechas.Larga(fecha) · @hora.ToString("HH:mm") — Ctrl+Enter para guardar · Esc para cancelar</span>
+        <button class="btn-secundario" @onclick="AlCancelar">Cancelar</button>
+        <button class="btn-primario" disabled="@string.IsNullOrWhiteSpace(titulo)" @onclick="Guardar">Guardar</button>
+    </div>
+</div>
+
+@code {
+    public record Datos(string Titulo, string Contenido, DateOnly Fecha, TimeOnly Hora);
+
+    [Parameter] public Item? Reunion { get; set; }
+    [Parameter] public DateOnly FechaInicial { get; set; }
+    [Parameter] public EventCallback<Datos> AlGuardar { get; set; }
+    [Parameter] public EventCallback AlCancelar { get; set; }
+
+    private string titulo = "", contenido = "";
+    private DateOnly fecha;
+    private TimeOnly hora;
+    private ElementReference campoTitulo;
+
+    protected override void OnInitialized()
+    {
+        if (Reunion is not null)
+        {
+            titulo = Reunion.Titulo;
+            contenido = Reunion.Contenido;
+            fecha = Reunion.Fecha;
+            hora = Reunion.Hora ?? ProximaHora();
+        }
+        else
+        {
+            fecha = FechaInicial == default ? Fechas.Hoy : FechaInicial;
+            hora = ProximaHora();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool primera)
+    {
+        if (primera) await campoTitulo.FocusAsync();
+    }
+
+    /// <summary>Próximo cuarto de hora a partir de ahora (p. ej. 14:07 → 14:15).</summary>
+    private static TimeOnly ProximaHora()
+    {
+        var ahora = TimeOnly.FromDateTime(DateTime.Now);
+        var minutos = (ahora.Hour * 60 + ahora.Minute + 14) / 15 * 15;
+        return minutos >= 24 * 60 ? new TimeOnly(23, 55) : new TimeOnly(minutos / 60, minutos % 60);
+    }
+
+    private async Task Guardar()
+    {
+        if (string.IsNullOrWhiteSpace(titulo)) return;
+        await AlGuardar.InvokeAsync(new Datos(titulo.Trim(), contenido.Trim(), fecha, hora));
+    }
+
+    private async Task Tecla(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") await AlCancelar.InvokeAsync();
+        else if (e.Key == "Enter" && e.CtrlKey) await Guardar();
+    }
+}

@@ -1,0 +1,92 @@
+@* Calendario emergente. En modo rango: un clic elige un día; un segundo clic, el rango. *@
+<div class="capa-cierre" @onclick="AlCerrar"></div>
+<div class="calendario" @onkeydown="Tecla" @onkeydown:stopPropagation tabindex="-1" @ref="raiz">
+    <div class="cal-cabecera">
+        <button class="icono" title="Mes anterior" @onclick="() => mes = mes.AddMonths(-1)"><i class="ti ti-chevron-left"></i></button>
+        <span class="cal-mes">@Titulo</span>
+        <button class="icono" title="Mes siguiente" @onclick="() => mes = mes.AddMonths(1)"><i class="ti ti-chevron-right"></i></button>
+    </div>
+    <div class="cal-grilla">
+        @foreach (var d in DiasSemana) { <span class="cal-dsem">@d</span> }
+        @for (var dia = InicioGrilla; dia < InicioGrilla.AddDays(42); dia = dia.AddDays(1))
+        {
+            var d = dia;
+            <button class="@ClaseDia(d)" @onclick="() => Elegir(d)">
+                @d.Day
+                @if (Marcas?.Contains(d) == true) { <i class="cal-punto"></i> }
+            </button>
+        }
+    </div>
+    <div class="cal-pie">
+        <span class="pista">@(Rango ? (esperandoFin ? "Elige el último día del rango" : "Un día, o dos clics para un rango") : "")</span>
+        <button class="btn-secundario" @onclick="() => Elegir(Fechas.Hoy)">Hoy</button>
+    </div>
+</div>
+
+@code {
+    private static readonly string[] DiasSemana = ["L", "M", "X", "J", "V", "S", "D"];
+
+    [Parameter] public DateOnly Desde { get; set; }
+    [Parameter] public DateOnly Hasta { get; set; }
+    [Parameter] public bool Rango { get; set; }
+    /// <summary>Días con elementos (se marcan con un punto).</summary>
+    [Parameter] public IReadOnlySet<DateOnly>? Marcas { get; set; }
+    [Parameter] public EventCallback<(DateOnly Desde, DateOnly Hasta)> AlElegir { get; set; }
+    [Parameter] public EventCallback AlCerrar { get; set; }
+
+    private DateOnly mes;
+    private bool esperandoFin;
+    private DateOnly inicioRango;
+    private ElementReference raiz;
+
+    private string Titulo => mes.ToString("MMMM yyyy", System.Globalization.CultureInfo.GetCultureInfo("es-ES"));
+    private DateOnly InicioGrilla => Fechas.InicioSemana(mes);
+
+    protected override void OnInitialized()
+    {
+        var baseFecha = Desde == default ? Fechas.Hoy : Desde;
+        mes = new DateOnly(baseFecha.Year, baseFecha.Month, 1);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool primera)
+    {
+        if (primera) await raiz.FocusAsync();
+    }
+
+    private string ClaseDia(DateOnly d)
+    {
+        var c = "cal-dia";
+        if (d.Month != mes.Month) c += " fuera";
+        if (d == Fechas.Hoy) c += " hoy";
+        var (a, b) = esperandoFin ? (inicioRango, inicioRango) : (Desde, Hasta);
+        if (d == a || d == b) c += " sel";
+        else if (d > a && d < b) c += " rango";
+        return c;
+    }
+
+    private async Task Elegir(DateOnly d)
+    {
+        if (!Rango)
+        {
+            await AlElegir.InvokeAsync((d, d));
+            await AlCerrar.InvokeAsync();
+            return;
+        }
+        if (!esperandoFin)
+        {
+            // Primer clic: ya filtra por ese día y espera un posible segundo clic.
+            esperandoFin = true;
+            inicioRango = d;
+            await AlElegir.InvokeAsync((d, d));
+            return;
+        }
+        esperandoFin = false;
+        await AlElegir.InvokeAsync(d < inicioRango ? (d, inicioRango) : (inicioRango, d));
+        await AlCerrar.InvokeAsync();
+    }
+
+    private async Task Tecla(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") await AlCerrar.InvokeAsync();
+    }
+}

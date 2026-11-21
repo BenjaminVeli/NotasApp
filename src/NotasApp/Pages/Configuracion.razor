@@ -1,0 +1,78 @@
+@page "/configuracion"
+@inject ConfiguracionService Config
+@inject AvisosService Avisos
+
+<div class="pagina">
+    <div class="cabecera"><h1>Configuración</h1></div>
+
+    <div class="grupo-titulo">General</div>
+    <div class="grupo">
+        <label class="opcion">
+            <div class="opcion-texto">
+                <div>Iniciar con Windows</div>
+                <div class="sub">Arranca oculta en la bandeja al encender la computadora, para avisarte de tus reuniones.</div>
+            </div>
+            <input type="checkbox" class="interruptor" checked="@iniciarConWindows" @onchange="CambiarInicio" />
+        </label>
+        <div class="opcion">
+            <div class="opcion-texto">
+                <div>Al cerrar la ventana</div>
+                <div class="sub">La app sigue en la bandeja, junto al reloj. Para cerrarla del todo usa <b>Salir</b> en su ícono.</div>
+            </div>
+            <i class="ti ti-layout-bottombar" style="color:var(--text-3);font-size:18px"></i>
+        </div>
+    </div>
+
+    <div class="grupo-titulo">Avisos de reuniones</div>
+    <div class="grupo">
+        <div class="opcion">
+            <div class="opcion-texto">
+                <div>Aviso previo</div>
+                <div class="sub">Además del aviso a la hora de empezar.</div>
+            </div>
+            <div class="segmento">
+                @foreach (var m in Minutos)
+                {
+                    <button class="@(Config.Actual.MinutosAviso == m ? "on" : "")" @onclick="() => CambiarMinutos(m)">@m min</button>
+                }
+            </div>
+        </div>
+        <div class="opcion">
+            <div class="opcion-texto">
+                <div>Probar avisos</div>
+                <div class="sub">Muestra una notificación de ejemplo de Windows.</div>
+            </div>
+            <button class="btn-secundario" @onclick="Probar">@(probado ? "Enviado ✓" : "Probar")</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private static readonly int[] Minutos = [5, 10, 15, 30];
+    private bool iniciarConWindows, probado;
+
+    protected override void OnInitialized() => iniciarConWindows = InicioWindows.Registrado;
+
+    private void CambiarInicio(ChangeEventArgs e)
+    {
+        iniciarConWindows = e.Value is true;
+        Config.Guardar(c => c.IniciarConWindows = iniciarConWindows);
+        InicioWindows.Fijar(iniciarConWindows);
+    }
+
+    private async Task CambiarMinutos(int m)
+    {
+        Config.Guardar(c => c.MinutosAviso = m);
+        await Avisos.RevisarAsync();
+    }
+
+    private async Task Probar()
+    {
+        AvisosService.MostrarMensaje("Así se verán tus avisos",
+            $"Te avisaré {Config.Actual.MinutosAviso} minutos antes de cada reunión y otra vez a la hora.");
+        probado = true;
+        StateHasChanged();
+        await Task.Delay(2000);
+        probado = false;
+    }
+}

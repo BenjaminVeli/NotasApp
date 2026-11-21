@@ -1,0 +1,11 @@
+<div class="vacio">
+    <i class="ti @Icono"></i>
+    <div>@Texto</div>
+    @if (Detalle is not null) { <div class="detalle">@Detalle</div> }
+</div>
+
+@code {
+    [Parameter] public string Icono { get; set; } = "ti-inbox";
+    [Parameter] public string Texto { get; set; } = "";
+    [Parameter] public string? Detalle { get; set; }
+}
