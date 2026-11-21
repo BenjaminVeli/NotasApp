@@ -303,6 +303,15 @@ label.opcion { cursor: pointer; }
 .grip { color: var(--grip); cursor: grab; font-size: 16px; margin-top: 2px; }
 .grip:hover { color: var(--text-2); }
 .arrastrando { opacity: .35; }
+/* Copia de la tarjeta que sigue al mouse mientras se arrastra. */
+.arrastre-flotante {
+    opacity: .95 !important;
+    background: var(--card-hover) !important;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, .6);
+    cursor: grabbing;
+    animation: none !important;
+}
+.arrastre-flotante .grip { cursor: grabbing; }
 
 .entrar { animation: entrar .22s var(--ease); }
 .salir { opacity: 0; transform: scale(.97) translateX(12px); pointer-events: none; }

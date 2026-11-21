@@ -7,6 +7,11 @@ window.notas = {
             animation: 180,
             easing: 'cubic-bezier(0.32, 0.72, 0, 1)',
             ghostClass: 'arrastrando',
+            // El WebView2 de WPF (modo composición) no entrega el arrastre nativo de HTML5
+            // con el mouse real: se arrastra con eventos de puntero.
+            forceFallback: true,
+            fallbackClass: 'arrastre-flotante',
+            fallbackTolerance: 3,
             onEnd(e) {
                 if (e.oldIndex === e.newIndex) return;
                 // Devuelve el nodo a su lugar: Blazor es quien reordena el DOM.
