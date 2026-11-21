@@ -174,6 +174,48 @@ window.notas = {
         });
     },
 
+    /**
+     * Atajos de toda la app. `atajos` es { "ctrl+k": "MetodoNet", ... }. Se escuchan en fase de
+     * captura para ganarle a Monaco (que usa Ctrl+K como inicio de combinaciones).
+     */
+    atajosGlobales(dotnet, atajos) {
+        document.addEventListener('keydown', e => {
+            if (e.repeat) return;
+            const combo = [e.ctrlKey && 'ctrl', e.shiftKey && 'shift', e.altKey && 'alt', e.key.toLowerCase()]
+                .filter(Boolean).join('+');
+            const metodo = atajos[combo];
+            if (!metodo) return;
+            e.preventDefault();
+            e.stopPropagation();
+            dotnet.invokeMethodAsync(metodo);
+        }, true);
+    },
+
+    /** Desplaza lo mínimo para que un elemento de una lista con scroll quede visible. */
+    verEnLista(id) {
+        document.getElementById(id)?.scrollIntoView({ block: 'nearest' });
+    },
+
+    /** Selecciona en el editor la primera aparición de lo buscado (sin distinguir mayúsculas). */
+    buscarEnEditor(editorId, texto) {
+        const editor = window.blazorMonaco.editor.getEditor(editorId, true);
+        const palabras = texto.match(/[\p{L}\p{N}_]+/gu);
+        if (!editor || !palabras) return;
+        const modelo = editor.getModel();
+        // Primero la frase completa; si no aparece, la primera palabra.
+        const coincidencias = modelo.findMatches(texto.trim(), false, false, false, null, false);
+        const encontrada = coincidencias[0] ?? modelo.findMatches(palabras[0], false, false, false, null, false)[0];
+        if (!encontrada) return;
+        // La búsqueda es por prefijo ("presup"): se selecciona la palabra completa ("presupuesto").
+        let rango = encontrada.range;
+        const palabra = modelo.getWordAtPosition(rango.getStartPosition());
+        if (palabra && rango.startLineNumber === rango.endLineNumber && palabra.endColumn > rango.endColumn)
+            rango = new monaco.Range(rango.startLineNumber, rango.startColumn, rango.endLineNumber, palabra.endColumn);
+        editor.setSelection(rango);
+        editor.revealRangeInCenter(rango);
+        editor.focus();
+    },
+
     /** Desplaza la vista hasta un elemento (p. ej. una reunión abierta desde un aviso). */
     verElemento(id) {
         requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'center' }));

@@ -1,0 +1,27 @@
+@* Muestra un texto con las partes marcadas por la búsqueda (\u0001…\u0002) dentro de <mark>, sin HTML crudo. *@
+@foreach (var (parte, marcada) in Partes)
+{
+    if (marcada) { <mark>@parte</mark> }
+    else { @parte }
+}
+
+@code {
+    [Parameter] public string Texto { get; set; } = "";
+
+    private IEnumerable<(string, bool)> Partes
+    {
+        get
+        {
+            var marcada = false;
+            var inicio = 0;
+            for (int i = 0; i < Texto.Length; i++)
+            {
+                if (Texto[i] != BusquedaService.InicioMarca && Texto[i] != BusquedaService.FinMarca) continue;
+                if (i > inicio) yield return (Texto[inicio..i], marcada);
+                marcada = Texto[i] == BusquedaService.InicioMarca;
+                inicio = i + 1;
+            }
+            if (inicio < Texto.Length) yield return (Texto[inicio..], marcada);
+        }
+    }
+}

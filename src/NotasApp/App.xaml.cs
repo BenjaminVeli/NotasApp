@@ -66,6 +66,7 @@ public partial class App : Application
         servicios.AddSingleton<ItemService>();
         servicios.AddSingleton<CategoriaService>();
         servicios.AddSingleton<ArchivoService>();
+        servicios.AddSingleton<BusquedaService>();
         servicios.AddSingleton<ConexionService>();
         servicios.AddSingleton<ConfiguracionService>();
         servicios.AddSingleton<AvisosService>();

@@ -10,7 +10,7 @@
 
 <div class="app">
     <aside class="sidebar">
-        <div class="buscar" title="Búsqueda global (Ctrl+K)">
+        <div class="buscar" title="Búsqueda global (Ctrl+K)" role="button" @onclick="() => buscando = true">
             <i class="ti ti-search"></i> Buscar
             <kbd>Ctrl K</kbd>
         </div>
@@ -63,10 +63,15 @@
     <FormCategoria AlCerrar="() => creandoCategoria = false" AlGuardar="CategoriaCreada" />
 }
 
+@if (buscando)
+{
+    <PaletaBusqueda AlCerrar="() => buscando = false" />
+}
+
 @code {
     private Dictionary<string, int> cuentas = [];
     private List<CategoriaResumen> categorias = [];
-    private bool creandoCategoria, recrearSortable;
+    private bool creandoCategoria, recrearSortable, buscando;
     private int versionCategorias;
     private ElementReference listaCategorias;
     private DotNetObjectReference<MainLayout>? referencia;
@@ -89,6 +94,8 @@
             // Ruta pedida antes de que existiera la ventana (p. ej. clic en un aviso con la app oculta).
             if (Navegacion.TomarPendiente() is { } ruta) Navegar(ruta);
             referencia = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("notas.atajosGlobales", referencia,
+                new Dictionary<string, string> { ["ctrl+k"] = nameof(AlternarBusqueda) });
         }
         else if (!recrearSortable) return;
 
@@ -110,6 +117,14 @@
 
     private void AlCambiar() => _ = InvokeAsync(async () => { await Cargar(); StateHasChanged(); });
     private void AlCambiarConexion() => _ = InvokeAsync(StateHasChanged);
+
+    /// <summary>Ctrl+K: abre la búsqueda global (o la cierra si ya está abierta).</summary>
+    [JSInvokable]
+    public void AlternarBusqueda()
+    {
+        buscando = !buscando;
+        StateHasChanged();
+    }
 
     private void CategoriaCreada(Guid id)
     {

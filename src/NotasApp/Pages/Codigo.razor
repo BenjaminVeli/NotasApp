@@ -132,6 +132,13 @@
     private IJSObjectReference? sortable;
     private bool enfocarNuevo, enfocarRenombre, crearSortable;
 
+    /// <summary>Texto buscado (al abrir desde la búsqueda global): se selecciona en el editor.</summary>
+    [SupplyParameterFromQuery] public string? Q { get; set; }
+    /// <summary>Cambia en cada búsqueda, para repetirla aunque el archivo ya estuviera abierto.</summary>
+    [SupplyParameterFromQuery] public long N { get; set; }
+    private string? buscarPendiente;
+    private long ultimaBusqueda;
+
     private string TextoEstado => estado switch
     {
         EstadoGuardado.SinGuardar => "Sin guardar",
@@ -150,6 +157,12 @@
             categoria = null;
             cargado = true;
             return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(Q) && N != ultimaBusqueda)
+        {
+            ultimaBusqueda = N;
+            buscarPendiente = Q;
         }
 
         if (CategoriaId != categoriaCargada)
@@ -172,6 +185,16 @@
         {
             await Abrir(a);
         }
+        // Si el editor aún no existe, la búsqueda se hace al iniciarse (AlIniciarEditor).
+        await BuscarPendienteEnEditor();
+    }
+
+    private async Task BuscarPendienteEnEditor()
+    {
+        if (buscarPendiente is null || !editorListo || editor is null || actual is null) return;
+        var texto = buscarPendiente;
+        buscarPendiente = null;
+        await JS.InvokeVoidAsync("notas.buscarEnEditor", editor.Id, texto);
     }
 
     protected override async Task OnAfterRenderAsync(bool primera)
@@ -216,6 +239,7 @@
         await JS.InvokeVoidAsync("notas.prepararEditor", editor!.Id, referencia);
         // Si se cambió de archivo mientras el editor se creaba, carga el actual.
         if (actual is not null) await CargarEnEditor(actual);
+        await BuscarPendienteEnEditor();
     }
 
     [JSInvokable]

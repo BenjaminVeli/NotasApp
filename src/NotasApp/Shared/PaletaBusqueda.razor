@@ -1,0 +1,124 @@
+@* Búsqueda global (Ctrl+K): notas, reuniones y archivos de código en una sola lista. *@
+@inject BusquedaService Busqueda
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<div class="paleta-fondo" @onclick="AlCerrar">
+    <div class="paleta" role="dialog" aria-label="Búsqueda global" @onclick:stopPropagation>
+        <div class="paleta-entrada">
+            <i class="ti ti-search"></i>
+            <input placeholder="Buscar en notas, reuniones y código" @bind="texto" @bind:event="oninput" @bind:after="Buscar"
+                   @onkeydown="Tecla" @ref="campo" spellcheck="false" autocomplete="off"
+                   role="combobox" aria-expanded="@(resultados.Count > 0)" aria-controls="paleta-resultados" />
+            <kbd>Esc</kbd>
+        </div>
+
+        <div class="paleta-resultados" id="paleta-resultados" role="listbox">
+            @if (string.IsNullOrWhiteSpace(texto))
+            {
+                <div class="paleta-aviso">Escribe una palabra: busca en títulos, contenido y código, aunque estés sin internet.</div>
+            }
+            else if (buscado && resultados.Count == 0)
+            {
+                <div class="paleta-aviso">Sin resultados para «@texto.Trim()»</div>
+            }
+            else
+            {
+                var indice = 0;
+                @foreach (var grupo in resultados.GroupBy(r => r.Tipo))
+                {
+                    var (nombre, icono, color) = Grupo(grupo.Key);
+                    <div class="paleta-grupo">@nombre <span>@grupo.Count()</span></div>
+                    @foreach (var r in grupo)
+                    {
+                        var i = indice++;
+                        <div id="resultado-@i" role="option" aria-selected="@(i == seleccion)"
+                             class="resultado @(i == seleccion ? "sel" : "") @(r.Completado ? "dn" : "")"
+                             @onmousemove="() => seleccion = i" @onclick="() => Abrir(r)">
+                            <i class="ti @icono" style="color:@color"></i>
+                            <div class="resultado-texto">
+                                <div class="resultado-titulo"><Resaltado Texto="@r.Titulo" /></div>
+                                @if (!string.IsNullOrWhiteSpace(r.Fragmento))
+                                {
+                                    <div class="resultado-fragmento"><Resaltado Texto="@r.Fragmento" /></div>
+                                }
+                            </div>
+                            <span class="resultado-detalle">@r.Detalle</span>
+                        </div>
+                    }
+                }
+            }
+        </div>
+
+        <div class="paleta-pie">
+            <span><kbd>↑</kbd><kbd>↓</kbd> navegar</span>
+            <span><kbd>Enter</kbd> abrir</span>
+            <span><kbd>Esc</kbd> cerrar</span>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public EventCallback AlCerrar { get; set; }
+
+    private string texto = "";
+    private List<ResultadoBusqueda> resultados = [];
+    private int seleccion;
+    private bool buscado, desplazar;
+    private int consulta; // descarta respuestas de búsquedas viejas si se escribe rápido
+    private ElementReference campo;
+
+    private static (string Nombre, string Icono, string Color) Grupo(string tipo) => tipo switch
+    {
+        TipoItem.Nota => ("Notas", "ti-note", "var(--yellow)"),
+        TipoItem.Reunion => ("Reuniones", "ti-calendar", "var(--accent)"),
+        _ => ("Código", "ti-file-code", "var(--purple)"),
+    };
+
+    protected override async Task OnAfterRenderAsync(bool primera)
+    {
+        if (primera) await campo.FocusAsync();
+        if (desplazar)
+        {
+            desplazar = false;
+            await JS.InvokeVoidAsync("notas.verEnLista", $"resultado-{seleccion}");
+        }
+    }
+
+    private async Task Buscar()
+    {
+        var numero = ++consulta;
+        var encontrados = await Busqueda.BuscarAsync(texto);
+        if (numero != consulta) return;
+        resultados = encontrados;
+        seleccion = 0;
+        buscado = true;
+    }
+
+    private async Task Tecla(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "Escape":
+                await AlCerrar.InvokeAsync();
+                break;
+            case "ArrowDown" when resultados.Count > 0:
+                seleccion = (seleccion + 1) % resultados.Count;
+                desplazar = true;
+                break;
+            case "ArrowUp" when resultados.Count > 0:
+                seleccion = (seleccion - 1 + resultados.Count) % resultados.Count;
+                desplazar = true;
+                break;
+            case "Enter" when seleccion < resultados.Count:
+                await Abrir(resultados[seleccion]);
+                break;
+        }
+    }
+
+    private async Task Abrir(ResultadoBusqueda r)
+    {
+        await AlCerrar.InvokeAsync();
+        Nav.NavigateTo(r.Ruta);
+    }
+}
