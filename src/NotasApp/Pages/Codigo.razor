@@ -1,23 +1,419 @@
 @page "/codigo"
 @page "/codigo/{CategoriaId:guid}"
+@page "/codigo/{CategoriaId:guid}/{ArchivoId:guid}"
+@implements IAsyncDisposable
 @inject CategoriaService Categorias
+@inject ArchivoService Archivos
+@inject NavigationManager Nav
+@inject IJSRuntime JS
 
-<div class="pagina" @key="CategoriaId">
-    <div class="cabecera">
-        <h1>@titulo</h1>
-        <button class="btn-primario" disabled><i class="ti ti-plus"></i> Nuevo archivo</button>
-    </div>
-    <EstadoVacio Icono="ti-file-code" Texto="Aún no hay archivos"
-                 Detalle="El editor de código (Monaco) llega en la Fase 6." />
+<div class="pagina pagina-codigo">
+    @if (categoria is null)
+    {
+        <div class="cabecera"><h1>Código</h1></div>
+        @if (cargado)
+        {
+            <EstadoVacio Icono="ti-folder-plus" Texto="No hay categorías" Detalle="Crea una para agrupar tus archivos (SQL, CSS, C#…)." />
+            <div style="text-align:center">
+                <button class="btn-primario" @onclick="() => editandoCategoria = true"><i class="ti ti-plus"></i> Nueva categoría</button>
+            </div>
+        }
+    }
+    else
+    {
+        var lenguaje = Lenguajes.Obtener(categoria.Lenguaje);
+        <div class="cabecera">
+            <i class="ti @lenguaje.Icono icono-titulo" style="color:@lenguaje.Color"></i>
+            <h1>@categoria.Nombre</h1>
+            <span class="etiqueta-lenguaje">@lenguaje.Nombre · @categoria.Extension</span>
+            <button class="icono" title="Editar categoría" @onclick="() => editandoCategoria = true"><i class="ti ti-pencil"></i></button>
+            <button class="btn-primario" @onclick="NuevoArchivo"><i class="ti ti-plus"></i> Nuevo archivo</button>
+        </div>
+
+        <div class="codigo-grid">
+            <div class="archivos">
+                @if (creando)
+                {
+                    <div class="archivo-nuevo entrar">
+                        <input class="campo" placeholder="@($"nombre{categoria.Extension}")" @bind="nombreNuevo" @bind:event="oninput"
+                               @onkeydown="TeclaNuevo" @ref="campoNuevo" />
+                        @if (errorNombre is not null) { <div class="error-campo">@errorNombre</div> }
+                    </div>
+                }
+                <div class="lista-archivos" @ref="listaArchivos">
+                    @foreach (var a in archivos)
+                    {
+                        <div @key="a.Id" class="archivo @(actual?.Id == a.Id ? "on" : "")" @onclick="() => Abrir(a)">
+                            <i class="ti ti-file-code" style="color:@lenguaje.Color"></i>
+                            @if (renombrando == a.Id)
+                            {
+                                <input class="campo campo-renombrar" @bind="nombreRenombre" @bind:event="oninput" @ref="campoRenombre"
+                                       @onkeydown="e => TeclaRenombrar(e, a)" @onblur="() => ConfirmarRenombre(a)" @onclick:stopPropagation />
+                            }
+                            else
+                            {
+                                <span class="archivo-nombre" title="Doble clic para renombrar" @ondblclick="() => EmpezarRenombre(a)">@a.Nombre</span>
+                            }
+                            @if (confirmando == a.Id)
+                            {
+                                <button class="btn-peligro chico" @onclick="() => Eliminar(a)" @onclick:stopPropagation>Eliminar</button>
+                            }
+                            else if (renombrando != a.Id)
+                            {
+                                <button class="icono icono-chico acciones" title="Eliminar" @onclick="() => confirmando = a.Id" @onclick:stopPropagation><i class="ti ti-trash"></i></button>
+                            }
+                        </div>
+                    }
+                </div>
+                @if (renombrando is not null && errorNombre is not null) { <div class="error-campo">@errorNombre</div> }
+                @if (!archivos.Any() && !creando)
+                {
+                    <div class="archivos-vacio">Sin archivos todavía</div>
+                }
+            </div>
+
+            <div class="editor-panel">
+                @if (actual is not null)
+                {
+                    <div class="editor-barra">
+                        <span class="editor-nombre">@actual.Nombre</span>
+                        <span class="estado-guardado @estado.ToString().ToLowerInvariant()">@TextoEstado</span>
+                        <button class="btn-copiar @(copiado ? "ok" : "")" title="Copiar todo (Ctrl+Shift+C)" @onclick="Copiar">
+                            <i class="ti @(copiado ? "ti-check" : "ti-copy")"></i> @(copiado ? "Copiado" : "Copiar")
+                        </button>
+                    </div>
+                    <div class="editor-contenedor">
+                        <StandaloneCodeEditor @ref="editor" Id="editor-codigo" CssClass="editor-monaco"
+                                              ConstructionOptions="Opciones" OnDidInit="AlIniciarEditor"
+                                              OnDidChangeModelContent="AlCambiarContenido" OnDidBlurEditorText="Guardar" />
+                    </div>
+                }
+                else
+                {
+                    <EstadoVacio Icono="ti-file-code" Texto="@(archivos.Any() ? "Elige un archivo" : "Crea tu primer archivo")"
+                                 Detalle="@(archivos.Any() ? "Se abre en el editor con resaltado de sintaxis." : $"Con el botón Nuevo archivo (por ejemplo consulta{categoria.Extension}).")" />
+                }
+            </div>
+        </div>
+    }
 </div>
 
+@if (editandoCategoria)
+{
+    <FormCategoria Existente="categoria" AlCerrar="() => editandoCategoria = false"
+                   AlGuardar="CategoriaGuardada" AlEliminar="CategoriaEliminada" />
+}
+
 @code {
+    private enum EstadoGuardado { Guardado, SinGuardar, Guardando, Error }
+
+    // Último archivo abierto en cada categoría, para volver a él al regresar.
+    private static readonly Dictionary<Guid, Guid> UltimoAbierto = [];
+
     [Parameter] public Guid? CategoriaId { get; set; }
-    private string titulo = "Código";
+    [Parameter] public Guid? ArchivoId { get; set; }
+
+    private CategoriaResumen? categoria;
+    private List<Archivo> archivos = [];
+    private Archivo? actual;
+    private bool cargado, creando, editandoCategoria, copiado;
+    private string nombreNuevo = "", nombreRenombre = "";
+    private string? errorNombre;
+    private Guid? renombrando, confirmando, categoriaCargada;
+
+    private StandaloneCodeEditor? editor;
+    private bool editorListo, cargandoEditor;
+    private EstadoGuardado estado = EstadoGuardado.Guardado;
+    private int cambios; // ediciones desde que se abrió el archivo (para saber si hubo más mientras se guardaba)
+    private CancellationTokenSource? espera;
+
+    private ElementReference listaArchivos, campoNuevo, campoRenombre;
+    private DotNetObjectReference<Codigo>? referencia;
+    private IJSObjectReference? sortable;
+    private bool enfocarNuevo, enfocarRenombre, crearSortable;
+
+    private string TextoEstado => estado switch
+    {
+        EstadoGuardado.SinGuardar => "Sin guardar",
+        EstadoGuardado.Guardando => "Guardando…",
+        EstadoGuardado.Error => "No se pudo guardar",
+        _ => "Guardado",
+    };
 
     protected override async Task OnParametersSetAsync()
     {
-        var lista = await Categorias.ListarAsync();
-        titulo = lista.FirstOrDefault(c => c.Id == CategoriaId)?.Nombre ?? "Código";
+        if (CategoriaId is null)
+        {
+            // Sin categoría elegida: abre la primera, si existe.
+            var primera = (await Categorias.ListarAsync()).FirstOrDefault();
+            if (primera is not null) { Nav.NavigateTo($"codigo/{primera.Id}", replace: true); return; }
+            categoria = null;
+            cargado = true;
+            return;
+        }
+
+        if (CategoriaId != categoriaCargada)
+        {
+            await Guardar();
+            categoria = (await Categorias.ListarAsync()).FirstOrDefault(c => c.Id == CategoriaId);
+            if (categoria is null) { Nav.NavigateTo("codigo", replace: true); return; }
+            categoriaCargada = CategoriaId;
+            archivos = await Archivos.ListarAsync(categoria.Id);
+            (creando, renombrando, confirmando, errorNombre) = (false, null, null, null);
+            crearSortable = true;
+            cargado = true;
+
+            var elegido = ArchivoId ?? (UltimoAbierto.TryGetValue(categoria.Id, out var u) ? u : null);
+            var archivo = archivos.FirstOrDefault(a => a.Id == elegido) ?? archivos.FirstOrDefault();
+            if (archivo is not null) await Abrir(archivo);
+            else actual = null;
+        }
+        else if (ArchivoId is { } id && actual?.Id != id && archivos.FirstOrDefault(a => a.Id == id) is { } a)
+        {
+            await Abrir(a);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool primera)
+    {
+        if (crearSortable && categoria is not null)
+        {
+            crearSortable = false;
+            if (sortable is not null) await sortable.InvokeVoidAsync("destroy");
+            referencia ??= DotNetObjectReference.Create(this);
+            sortable = await JS.InvokeAsync<IJSObjectReference>("notas.sortable", listaArchivos, referencia,
+                new { handle = (string?)null, draggable = ".archivo", metodo = nameof(MoverArchivo) });
+        }
+        if (enfocarNuevo) { enfocarNuevo = false; await campoNuevo.FocusAsync(); }
+        if (enfocarRenombre) { enfocarRenombre = false; await campoRenombre.FocusAsync(); }
+    }
+
+    // ---------- Editor ----------
+
+    private StandaloneEditorConstructionOptions Opciones(StandaloneCodeEditor _) => new()
+    {
+        AutomaticLayout = true,
+        Language = categoria?.Lenguaje ?? "plaintext",
+        Value = actual?.Contenido ?? "",
+        Theme = "vs-dark", // se cambia a "notas-oscuro" al iniciar (notas.prepararEditor)
+        FontFamily = "'Cascadia Code', 'Cascadia Mono', Consolas, monospace",
+        FontSize = 13,
+        LineHeight = 21,
+        Minimap = new EditorMinimapOptions { Enabled = false },
+        ScrollBeyondLastLine = false,
+        Padding = new EditorPaddingOptions { Top = 10, Bottom = 10 },
+        RenderLineHighlight = "line",
+        TabSize = 4,
+        FixedOverflowWidgets = true,
+        LineNumbersMinChars = 3,
+    };
+
+    private async Task AlIniciarEditor()
+    {
+        editorListo = true;
+        // Tema del mockup y atajos: Ctrl+S guarda al instante, Ctrl+Shift+C copia todo.
+        referencia ??= DotNetObjectReference.Create(this);
+        await JS.InvokeVoidAsync("notas.prepararEditor", editor!.Id, referencia);
+        // Si se cambió de archivo mientras el editor se creaba, carga el actual.
+        if (actual is not null) await CargarEnEditor(actual);
+    }
+
+    [JSInvokable]
+    public async Task AtajoGuardar()
+    {
+        await Guardar();
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public Task AtajoCopiar() => Copiar();
+
+    private async Task Abrir(Archivo archivo)
+    {
+        if (actual?.Id == archivo.Id) return;
+        await Guardar(); // guarda el anterior antes de cambiar
+        actual = archivo;
+        confirmando = null;
+        UltimoAbierto[categoria!.Id] = archivo.Id;
+        if (editorListo && editor is not null) await CargarEnEditor(archivo);
+        estado = EstadoGuardado.Guardado;
+        cambios = 0;
+    }
+
+    private async Task CargarEnEditor(Archivo archivo)
+    {
+        cargandoEditor = true;
+        try
+        {
+            await editor!.SetValue(archivo.Contenido);
+            await Global.SetModelLanguage(JS, await editor.GetModel(), categoria?.Lenguaje ?? "plaintext");
+        }
+        finally { cargandoEditor = false; }
+    }
+
+    private void AlCambiarContenido(ModelContentChangedEvent e)
+    {
+        if (cargandoEditor) return; // cambio por cargar otro archivo, no por escribir
+        cambios++;
+        estado = EstadoGuardado.SinGuardar;
+        // Autoguardado: 1 segundo después de la última tecla.
+        espera?.Cancel();
+        espera = new CancellationTokenSource();
+        _ = GuardarLuego(espera.Token);
+    }
+
+    private async Task GuardarLuego(CancellationToken token)
+    {
+        try { await Task.Delay(1000, token); }
+        catch (TaskCanceledException) { return; }
+        await Guardar();
+        StateHasChanged();
+    }
+
+    private async Task Guardar()
+    {
+        if (actual is null || editor is null || !editorListo) return;
+        if (estado is not (EstadoGuardado.SinGuardar or EstadoGuardado.Error)) return;
+        espera?.Cancel();
+        var archivo = actual;
+        var cambiosAntes = cambios;
+        estado = EstadoGuardado.Guardando;
+        try
+        {
+            var valor = await editor.GetValue();
+            await Archivos.GuardarContenidoAsync(archivo.Id, valor);
+            archivo.Contenido = valor;
+            // Si se siguió escribiendo mientras se guardaba, queda pendiente el próximo autoguardado.
+            if (actual == archivo) estado = cambios == cambiosAntes ? EstadoGuardado.Guardado : EstadoGuardado.SinGuardar;
+        }
+        catch (Exception) when (actual == archivo)
+        {
+            estado = EstadoGuardado.Error;
+        }
+    }
+
+    private async Task Copiar()
+    {
+        if (editor is null || !editorListo) return;
+        if (!await Portapapeles.CopiarAsync(await editor.GetValue())) return;
+        copiado = true;
+        StateHasChanged();
+        await Task.Delay(1500);
+        copiado = false;
+        StateHasChanged();
+    }
+
+    // ---------- Archivos ----------
+
+    private void NuevoArchivo()
+    {
+        (creando, nombreNuevo, errorNombre, renombrando) = (true, "", null, null);
+        enfocarNuevo = true;
+    }
+
+    private async Task TeclaNuevo(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") { creando = false; errorNombre = null; return; }
+        if (e.Key != "Enter" || string.IsNullOrWhiteSpace(nombreNuevo)) return;
+
+        var nombre = ArchivoService.CompletarNombre(nombreNuevo, categoria!.Extension);
+        if (await Archivos.ExisteNombreAsync(categoria.Id, nombre))
+        {
+            errorNombre = $"Ya existe «{nombre}» en {categoria.Nombre}";
+            return;
+        }
+        var archivo = await Archivos.CrearAsync(categoria.Id, nombre);
+        archivos.Insert(0, archivo);
+        (creando, errorNombre) = (false, null);
+        await Abrir(archivo);
+        if (editorListo && editor is not null) await editor.Focus();
+    }
+
+    private void EmpezarRenombre(Archivo a)
+    {
+        (renombrando, nombreRenombre, errorNombre, confirmando) = (a.Id, a.Nombre, null, null);
+        enfocarRenombre = true;
+    }
+
+    private async Task TeclaRenombrar(KeyboardEventArgs e, Archivo a)
+    {
+        if (e.Key == "Escape") { renombrando = null; errorNombre = null; }
+        else if (e.Key == "Enter") await ConfirmarRenombre(a);
+    }
+
+    private async Task ConfirmarRenombre(Archivo a)
+    {
+        if (renombrando != a.Id) return;
+        var nombre = ArchivoService.CompletarNombre(nombreRenombre, categoria!.Extension);
+        if (string.IsNullOrWhiteSpace(nombreRenombre) || nombre == a.Nombre) { renombrando = null; errorNombre = null; return; }
+        if (await Archivos.ExisteNombreAsync(categoria.Id, nombre, a.Id))
+        {
+            errorNombre = $"Ya existe «{nombre}» en {categoria.Nombre}";
+            return;
+        }
+        await Archivos.RenombrarAsync(a.Id, nombre);
+        a.Nombre = nombre;
+        (renombrando, errorNombre) = (null, null);
+    }
+
+    private async Task Eliminar(Archivo a)
+    {
+        confirmando = null;
+        var indice = archivos.IndexOf(a);
+        await Archivos.EliminarAsync(a.Id);
+        archivos.Remove(a);
+        if (actual?.Id == a.Id)
+        {
+            // Abre el siguiente (o el anterior) para no dejar el editor vacío.
+            actual = null;
+            estado = EstadoGuardado.Guardado;
+            var siguiente = archivos.ElementAtOrDefault(Math.Min(indice, archivos.Count - 1));
+            if (siguiente is not null) await Abrir(siguiente);
+        }
+    }
+
+    /// <summary>Llamado desde SortableJS al soltar un archivo en la lista.</summary>
+    [JSInvokable]
+    public async Task MoverArchivo(int desde, int hasta)
+    {
+        if (desde == hasta || desde >= archivos.Count || hasta >= archivos.Count) return;
+        var movido = archivos[desde];
+        archivos.RemoveAt(desde);
+        archivos.Insert(hasta, movido);
+        StateHasChanged();
+        await Archivos.ReordenarAsync(archivos.Select(a => a.Id).ToList());
+    }
+
+    // ---------- Categoría ----------
+
+    private async Task CategoriaGuardada(Guid id)
+    {
+        editandoCategoria = false;
+        if (CategoriaId != id) { Nav.NavigateTo($"codigo/{id}"); return; }
+        // Mismo id: recarga nombre, lenguaje y extensión (y el resaltado del editor).
+        categoria = (await Categorias.ListarAsync()).FirstOrDefault(c => c.Id == id);
+        if (editorListo && editor is not null && categoria is not null)
+            await Global.SetModelLanguage(JS, await editor.GetModel(), categoria.Lenguaje);
+    }
+
+    private void CategoriaEliminada()
+    {
+        editandoCategoria = false;
+        actual = null;
+        categoriaCargada = null;
+        Nav.NavigateTo("codigo", replace: true);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        espera?.Cancel();
+        try
+        {
+            await Guardar(); // por si se sale de la página antes del autoguardado
+            if (sortable is not null) await sortable.InvokeVoidAsync("destroy");
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        referencia?.Dispose();
     }
 }

@@ -1,10 +1,12 @@
 @inherits LayoutComponentBase
-@implements IDisposable
+@implements IAsyncDisposable
 @inject ItemService Items
 @inject CategoriaService Categorias
+@inject ArchivoService Archivos
 @inject ConexionService Conexion
 @inject NavegacionService Navegacion
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <div class="app">
     <aside class="sidebar">
@@ -25,15 +27,21 @@
             <i class="ti ti-code" style="color:var(--purple)"></i>Código
         </NavLink>
 
-        <div class="seccion">Categorías</div>
-        @foreach (var c in categorias)
-        {
-            var (icono, color) = IconoCategoria(c.Lenguaje);
-            <NavLink class="nv" ActiveClass="on" href="@($"codigo/{c.Id}")">
-                <i class="ti @icono" style="color:@color"></i>@c.Nombre
-                @if (c.Archivos > 0) { <span class="cuenta">@c.Archivos</span> }
-            </NavLink>
-        }
+        <div class="seccion">
+            Categorías
+            <button class="icono icono-chico" title="Nueva categoría" @onclick="() => creandoCategoria = true"><i class="ti ti-plus"></i></button>
+        </div>
+        @* La @key cambia tras cada arrastre: Blazor vuelve a crear la lista (ver notas.sortable, revertir: false). *@
+        <div class="categorias" @key="versionCategorias" @ref="listaCategorias" title="Arrastra para ordenar">
+            @foreach (var c in categorias)
+            {
+                var l = Lenguajes.Obtener(c.Lenguaje);
+                <NavLink @key="c.Id" class="nv" ActiveClass="on" href="@($"codigo/{c.Id}")" draggable="false">
+                    <i class="ti @l.Icono" style="color:@l.Color"></i>@c.Nombre
+                    @if (c.Archivos > 0) { <span class="cuenta">@c.Archivos</span> }
+                </NavLink>
+            }
+        </div>
 
         <div class="pie-sidebar">
             <div class="estado @Conexion.Estado.ToString().ToLowerInvariant()" title="@TooltipEstado">
@@ -50,22 +58,44 @@
     </main>
 </div>
 
+@if (creandoCategoria)
+{
+    <FormCategoria AlCerrar="() => creandoCategoria = false" AlGuardar="CategoriaCreada" />
+}
+
 @code {
     private Dictionary<string, int> cuentas = [];
     private List<CategoriaResumen> categorias = [];
+    private bool creandoCategoria, recrearSortable;
+    private int versionCategorias;
+    private ElementReference listaCategorias;
+    private DotNetObjectReference<MainLayout>? referencia;
+    private IJSObjectReference? sortable;
 
     protected override async Task OnInitializedAsync()
     {
         Items.Cambio += AlCambiar;
+        Categorias.Cambio += AlCambiar;
+        Archivos.Cambio += AlCambiar;
         Conexion.Cambio += AlCambiarConexion;
         Navegacion.Solicitud += Navegar;
         await Cargar();
     }
 
-    protected override void OnAfterRender(bool primera)
+    protected override async Task OnAfterRenderAsync(bool primera)
     {
-        // Ruta pedida antes de que existiera la ventana (p. ej. clic en un aviso con la app oculta).
-        if (primera && Navegacion.TomarPendiente() is { } ruta) Navegar(ruta);
+        if (primera)
+        {
+            // Ruta pedida antes de que existiera la ventana (p. ej. clic en un aviso con la app oculta).
+            if (Navegacion.TomarPendiente() is { } ruta) Navegar(ruta);
+            referencia = DotNetObjectReference.Create(this);
+        }
+        else if (!recrearSortable) return;
+
+        recrearSortable = false;
+        if (sortable is not null) await sortable.InvokeVoidAsync("destroy");
+        sortable = await JS.InvokeAsync<IJSObjectReference>("notas.sortable", listaCategorias, referencia,
+            new { handle = (string?)null, draggable = ".nv", metodo = nameof(MoverCategoria), revertir = false });
     }
 
     private void Navegar(string ruta) => _ = InvokeAsync(() => Nav.NavigateTo(ruta));
@@ -81,6 +111,27 @@
     private void AlCambiar() => _ = InvokeAsync(async () => { await Cargar(); StateHasChanged(); });
     private void AlCambiarConexion() => _ = InvokeAsync(StateHasChanged);
 
+    private void CategoriaCreada(Guid id)
+    {
+        creandoCategoria = false;
+        Nav.NavigateTo($"codigo/{id}");
+    }
+
+    /// <summary>Llamado desde SortableJS al soltar una categoría en el sidebar.</summary>
+    [JSInvokable]
+    public async Task MoverCategoria(int desde, int hasta)
+    {
+        if (desde == hasta || desde >= categorias.Count || hasta >= categorias.Count) return;
+        var movida = categorias[desde];
+        categorias.RemoveAt(desde);
+        categorias.Insert(hasta, movida);
+        // SortableJS ya movió el nodo: se descarta la lista y se vuelve a crear en el orden nuevo.
+        versionCategorias++;
+        recrearSortable = true;
+        StateHasChanged();
+        await Categorias.ReordenarAsync(categorias.Select(c => c.Id).ToList());
+    }
+
     private string TextoEstado => Conexion.Estado switch
     {
         EstadoConexion.EnLinea => "En línea",
@@ -92,18 +143,15 @@
         ? "Neon no está configurado: los datos se guardan solo en este equipo"
         : Conexion.UltimoError ?? "Conectado a Neon";
 
-    public static (string Icono, string Color) IconoCategoria(string lenguaje) => lenguaje switch
-    {
-        "sql" => ("ti-database", "var(--cyan)"),
-        "css" => ("ti-brand-css3", "var(--orange)"),
-        "csharp" => ("ti-hash", "var(--success)"),
-        _ => ("ti-file-code", "var(--text-2)"),
-    };
-
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         Items.Cambio -= AlCambiar;
+        Categorias.Cambio -= AlCambiar;
+        Archivos.Cambio -= AlCambiar;
         Conexion.Cambio -= AlCambiarConexion;
         Navegacion.Solicitud -= Navegar;
+        try { if (sortable is not null) await sortable.InvokeVoidAsync("destroy"); }
+        catch (JSDisconnectedException) { }
+        referencia?.Dispose();
     }
 }

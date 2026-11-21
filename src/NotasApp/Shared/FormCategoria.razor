@@ -1,0 +1,99 @@
+@* Crear o editar una categoría de código (nombre, lenguaje para el resaltado y extensión). *@
+@inject CategoriaService Categorias
+
+<Modal Titulo="@(Existente is null ? "Nueva categoría" : "Editar categoría")" AlCerrar="AlCerrar">
+    <div class="form" @onkeydown="Tecla">
+        <label class="etiqueta">Nombre</label>
+        <input class="campo" placeholder="Por ejemplo: SQL" @bind="nombre" @bind:event="oninput" @ref="campoNombre" />
+
+        <label class="etiqueta">Lenguaje <span class="pista">(resaltado del editor)</span></label>
+        <div class="lenguajes">
+            @foreach (var l in Lenguajes.Todos)
+            {
+                <button class="lenguaje @(lenguaje == l.Id ? "on" : "")" @onclick="() => ElegirLenguaje(l)">
+                    <i class="ti @l.Icono" style="color:@l.Color"></i>@l.Nombre
+                </button>
+            }
+        </div>
+
+        <label class="etiqueta">Extensión <span class="pista">(al crear y exportar archivos)</span></label>
+        <input class="campo extension" placeholder=".sql" @bind="extension" @bind:event="oninput" />
+
+        <div class="editor-pie">
+            @if (Existente is not null)
+            {
+                @if (confirmando)
+                {
+                    <button class="btn-peligro" @onclick="Eliminar">
+                        Eliminar@(Existente.Archivos switch { 0 => "", 1 => " con su archivo", var n => $" con sus {n} archivos" })
+                    </button>
+                    <button class="icono" title="Cancelar" @onclick="() => confirmando = false"><i class="ti ti-x"></i></button>
+                }
+                else
+                {
+                    <button class="btn-texto-peligro" @onclick="() => confirmando = true"><i class="ti ti-trash"></i> Eliminar categoría</button>
+                }
+            }
+            <span style="margin-left:auto"></span>
+            <button class="btn-secundario" @onclick="AlCerrar">Cancelar</button>
+            <button class="btn-primario" disabled="@string.IsNullOrWhiteSpace(nombre)" @onclick="Guardar">Guardar</button>
+        </div>
+    </div>
+</Modal>
+
+@code {
+    /// <summary>Categoría a editar, o null para crear una nueva.</summary>
+    [Parameter] public CategoriaResumen? Existente { get; set; }
+    [Parameter] public EventCallback<Guid> AlGuardar { get; set; }
+    [Parameter] public EventCallback AlEliminar { get; set; }
+    [Parameter] public EventCallback AlCerrar { get; set; }
+
+    private string nombre = "", lenguaje = "plaintext", extension = ".txt";
+    private bool confirmando;
+    private ElementReference campoNombre;
+
+    protected override void OnInitialized()
+    {
+        if (Existente is null) return;
+        (nombre, lenguaje, extension) = (Existente.Nombre, Existente.Lenguaje, Existente.Extension);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool primera)
+    {
+        if (primera) await campoNombre.FocusAsync();
+    }
+
+    private void ElegirLenguaje(Lenguaje l)
+    {
+        var anterior = Lenguajes.Obtener(lenguaje);
+        // Si el nombre o la extensión eran los del lenguaje anterior (o estaban vacíos), se actualizan.
+        if (string.IsNullOrWhiteSpace(nombre) || nombre == anterior.Nombre) nombre = l.Nombre;
+        if (string.IsNullOrWhiteSpace(extension) || extension == anterior.Extension) extension = l.Extension;
+        lenguaje = l.Id;
+    }
+
+    private async Task Guardar()
+    {
+        if (string.IsNullOrWhiteSpace(nombre)) return;
+        Guid id;
+        if (Existente is null)
+            id = (await Categorias.CrearAsync(nombre.Trim(), lenguaje, extension)).Id;
+        else
+        {
+            id = Existente.Id;
+            await Categorias.ActualizarAsync(id, nombre.Trim(), lenguaje, extension);
+        }
+        await AlGuardar.InvokeAsync(id);
+    }
+
+    private async Task Eliminar()
+    {
+        await Categorias.EliminarAsync(Existente!.Id);
+        await AlEliminar.InvokeAsync();
+    }
+
+    private async Task Tecla(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Guardar();
+    }
+}

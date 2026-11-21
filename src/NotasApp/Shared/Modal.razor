@@ -1,0 +1,19 @@
+@* Diálogo modal con fondo desenfocado. Se cierra con Esc o clic fuera. *@
+<div class="modal-fondo" @onclick="AlCerrar">
+    <div class="modal" role="dialog" aria-modal="true" aria-label="@Titulo"
+         @onclick:stopPropagation @onkeydown="Tecla">
+        <div class="modal-titulo">@Titulo</div>
+        @ChildContent
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Titulo { get; set; } = "";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public EventCallback AlCerrar { get; set; }
+
+    private async Task Tecla(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") await AlCerrar.InvokeAsync();
+    }
+}

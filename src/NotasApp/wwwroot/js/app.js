@@ -1,9 +1,15 @@
 window.notas = {
-    /** Activa arrastrar y ordenar en un contenedor de tarjetas (.cd). */
-    sortable(el, dotnet) {
+    /**
+     * Activa arrastrar y ordenar en un contenedor. Por defecto: tarjetas (.cd) con agarre (.grip)
+     * y avisa a .NET con el método "Mover"; `opciones` permite cambiar los tres.
+     * Con `revertir: false` no devuelve el nodo a su lugar: .NET debe volver a crear la lista
+     * (cambiando su @key), porque Blazor no reubica bien componentes NavLink movidos a mano.
+     */
+    sortable(el, dotnet, opciones = {}) {
+        const { handle = '.grip', draggable = '.cd', metodo = 'Mover', revertir = true } = opciones;
         const s = Sortable.create(el, {
-            handle: '.grip',
-            draggable: '.cd',
+            handle: handle || undefined,   // null = se arrastra desde cualquier parte del elemento
+            draggable,
             animation: 180,
             easing: 'cubic-bezier(0.32, 0.72, 0, 1)',
             ghostClass: 'arrastrando',
@@ -11,13 +17,16 @@ window.notas = {
             // con el mouse real: se arrastra con eventos de puntero.
             forceFallback: true,
             fallbackClass: 'arrastre-flotante',
+            fallbackOnBody: true,   // la copia flotante va a <body>, no dentro de la lista que Blazor administra
             fallbackTolerance: 3,
             onEnd(e) {
                 if (e.oldIndex === e.newIndex) return;
-                // Devuelve el nodo a su lugar: Blazor es quien reordena el DOM.
-                e.item.remove();
-                e.from.insertBefore(e.item, e.from.children[e.oldIndex] ?? null);
-                dotnet.invokeMethodAsync('Mover', e.oldDraggableIndex, e.newDraggableIndex);
+                if (revertir) {
+                    // Devuelve el nodo a su lugar: Blazor es quien reordena el DOM.
+                    e.item.remove();
+                    e.from.insertBefore(e.item, e.from.children[e.oldIndex] ?? null);
+                }
+                dotnet.invokeMethodAsync(metodo, e.oldDraggableIndex, e.newDraggableIndex);
             }
         });
         return { destroy: () => s.destroy() };
@@ -122,6 +131,47 @@ window.notas = {
                 el.removeEventListener('keydown', alTecla);
             }
         };
+    },
+
+    /**
+     * Prepara un editor Monaco: tema con los colores del mockup y atajos Ctrl+S / Ctrl+Shift+C.
+     * Se usa addAction (atado a este editor) y no addCommand, que en Monaco es global y
+     * seguiría llamando a un editor ya destruido cuando se vuelve a crear.
+     */
+    prepararEditor(editorId, dotnet) {
+        if (!window.notas.temaDefinido) {
+            monaco.editor.defineTheme('notas-oscuro', {
+                base: 'vs-dark',
+                inherit: true,
+                rules: [
+                    { token: 'keyword', foreground: '569cd6' },
+                    { token: 'string', foreground: 'ce9178' },
+                    { token: 'string.sql', foreground: 'ce9178' }, // vs-dark la pinta de rojo puro
+                    { token: 'number', foreground: 'b5cea8' },
+                    { token: 'comment', foreground: '6a9955' },
+                ],
+                colors: {
+                    'editor.background': '#1e1e1e',
+                    'editorLineNumber.foreground': '#5a5a5a',
+                    'editorLineNumber.activeForeground': '#c6c6c6',
+                },
+            });
+            window.notas.temaDefinido = true;
+        }
+        monaco.editor.setTheme('notas-oscuro');
+
+        const editor = window.blazorMonaco.editor.getEditor(editorId);
+        const { KeyMod, KeyCode } = monaco;
+        editor.addAction({
+            id: 'notas.guardar', label: 'Guardar archivo',
+            keybindings: [KeyMod.CtrlCmd | KeyCode.KeyS],
+            run: () => dotnet.invokeMethodAsync('AtajoGuardar'),
+        });
+        editor.addAction({
+            id: 'notas.copiar', label: 'Copiar todo el archivo',
+            keybindings: [KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.KeyC],
+            run: () => dotnet.invokeMethodAsync('AtajoCopiar'),
+        });
     },
 
     /** Desplaza la vista hasta un elemento (p. ej. una reunión abierta desde un aviso). */
