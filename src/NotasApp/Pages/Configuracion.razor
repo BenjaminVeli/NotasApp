@@ -1,6 +1,8 @@
 @page "/configuracion"
 @inject ConfiguracionService Config
 @inject AvisosService Avisos
+@inject AtajoGlobalService AtajoGlobal
+@implements IDisposable
 
 <div class="pagina">
     <div class="cabecera"><h1>Configuración</h1></div>
@@ -20,6 +22,37 @@
                 <div class="sub">La app sigue en la bandeja, junto al reloj. Para cerrarla del todo usa <b>Salir</b> en su ícono.</div>
             </div>
             <i class="ti ti-layout-bottombar" style="color:var(--text-3);font-size:18px"></i>
+        </div>
+    </div>
+
+    <div class="grupo-titulo">Teclado</div>
+    <div class="grupo">
+        <div class="opcion">
+            <div class="opcion-texto">
+                <div>Atajo global</div>
+                <div class="sub">Muestra u oculta la app desde cualquier programa, aunque esté en la bandeja.</div>
+                @if (AtajoGlobal.Error is not null) { <div class="error-campo">@AtajoGlobal.Error</div> }
+                @if (mensajeAtajo is not null) { <div class="exito-campo">@mensajeAtajo</div> }
+            </div>
+            @if (capturando)
+            {
+                <input class="campo captura-atajo" readonly data-captura-atajo placeholder="Presiona la combinación…"
+                       @onkeydown="CapturarAtajo" @onkeydown:preventDefault @onblur="CancelarCaptura" @ref="campoCaptura" />
+            }
+            else
+            {
+                <span class="teclas">
+                    @foreach (var t in AtajoGlobal.Actual.ToString().Split('+')) { <kbd>@t</kbd> }
+                </span>
+                <button class="btn-secundario" @onclick="EmpezarCaptura">Cambiar</button>
+            }
+        </div>
+        <div class="opcion">
+            <div class="opcion-texto">
+                <div>Atajos dentro de la app</div>
+                <div class="sub">Ctrl+N, Ctrl+K, Ctrl+1/2/3, Ctrl+Enter, Supr… La lista completa se abre con Ctrl+/ o F1.</div>
+            </div>
+            <i class="ti ti-keyboard" style="color:var(--text-3);font-size:18px"></i>
         </div>
     </div>
 
@@ -49,7 +82,43 @@
 
 @code {
     private static readonly int[] Minutos = [5, 10, 15, 30];
-    private bool iniciarConWindows, probado;
+    private bool iniciarConWindows, probado, capturando, enfocarCaptura;
+    private string? mensajeAtajo;
+    private ElementReference campoCaptura;
+
+    protected override async Task OnAfterRenderAsync(bool primera)
+    {
+        if (enfocarCaptura) { enfocarCaptura = false; await campoCaptura.FocusAsync(); }
+    }
+
+    private void EmpezarCaptura()
+    {
+        // Se suelta el atajo actual: si no, al pulsarlo para probar ocultaría la app.
+        AtajoGlobal.Suspender();
+        (capturando, enfocarCaptura, mensajeAtajo) = (true, true, null);
+    }
+
+    private void CancelarCaptura()
+    {
+        if (!capturando) return;
+        capturando = false;
+        AtajoGlobal.Reanudar();
+    }
+
+    private void CapturarAtajo(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") { CancelarCaptura(); return; }
+        // Mientras solo se presionan modificadores (Ctrl, Alt…) se sigue esperando la tecla.
+        var combinacion = Combinacion.DesdeTeclado(e.Code, e.CtrlKey, e.AltKey, e.ShiftKey, e.MetaKey);
+        if (combinacion is null) return;
+        capturando = false;
+        mensajeAtajo = AtajoGlobal.Cambiar(combinacion.Value) ? $"Listo: ahora es {combinacion}." : null;
+    }
+
+    public void Dispose()
+    {
+        if (capturando) AtajoGlobal.Reanudar();
+    }
 
     protected override void OnInitialized() => iniciarConWindows = InicioWindows.Registrado;
 

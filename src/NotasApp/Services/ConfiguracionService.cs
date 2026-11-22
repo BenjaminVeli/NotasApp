@@ -12,6 +12,8 @@ public class Configuracion
     public int MinutosAviso { get; set; } = 10;
     /// <summary>Ya se avisó que cerrar la ventana deja la app en la bandeja.</summary>
     public bool AvisoBandejaMostrado { get; set; }
+    /// <summary>Atajo global para mostrar u ocultar la app ("Ctrl+Alt+N"). Null = el de por defecto.</summary>
+    public string? AtajoGlobal { get; set; }
 }
 
 /// <summary>Configuración local del equipo, guardada en %LOCALAPPDATA%\NotasApp\config.json.</summary>
@@ -26,7 +28,12 @@ public class ConfiguracionService
 #endif
 
     private static readonly string Ruta = Path.Combine(RutasDatos.Carpeta, "config.json");
-    private static readonly JsonSerializerOptions Opciones = new() { WriteIndented = true };
+    private static readonly JsonSerializerOptions Opciones = new()
+    {
+        WriteIndented = true,
+        // Legible si se abre a mano: "Ctrl+Alt+N" en vez de "Ctrl+Alt+N".
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
 
     public Configuracion Actual { get; private set; } = Cargar();
 

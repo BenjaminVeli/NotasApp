@@ -4,6 +4,7 @@
 @implements IAsyncDisposable
 @inject CategoriaService Categorias
 @inject ArchivoService Archivos
+@inject AtajosService Atajos
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -60,7 +61,11 @@
                             }
                             else if (renombrando != a.Id)
                             {
-                                <button class="icono icono-chico acciones" title="Eliminar" @onclick="() => confirmando = a.Id" @onclick:stopPropagation><i class="ti ti-trash"></i></button>
+                                <button class="icono icono-chico favorito @(a.Favorito ? "on" : "acciones")" @onclick:stopPropagation
+                                        title="@(a.Favorito ? "Quitar de favoritos" : "Marcar como favorito") (Ctrl+D)" @onclick="() => AlternarFavorito(a)">
+                                    <i class="ti ti-star"></i>
+                                </button>
+                                <button class="icono icono-chico acciones" title="Eliminar (Supr)" @onclick="() => confirmando = a.Id" @onclick:stopPropagation><i class="ti ti-trash"></i></button>
                             }
                         </div>
                     }
@@ -78,6 +83,9 @@
                     <div class="editor-barra">
                         <span class="editor-nombre">@actual.Nombre</span>
                         <span class="estado-guardado @estado.ToString().ToLowerInvariant()">@TextoEstado</span>
+                        <button class="btn-copiar @(exportado ? "ok" : "")" title="Exportar a un archivo (Ctrl+E)" @onclick="ExportarArchivo">
+                            <i class="ti @(exportado ? "ti-check" : "ti-download")"></i> @(exportado ? "Exportado" : "Exportar")
+                        </button>
                         <button class="btn-copiar @(copiado ? "ok" : "")" title="Copiar todo (Ctrl+Shift+C)" @onclick="Copiar">
                             <i class="ti @(copiado ? "ti-check" : "ti-copy")"></i> @(copiado ? "Copiado" : "Copiar")
                         </button>
@@ -116,7 +124,7 @@
     private CategoriaResumen? categoria;
     private List<Archivo> archivos = [];
     private Archivo? actual;
-    private bool cargado, creando, editandoCategoria, copiado;
+    private bool cargado, creando, editandoCategoria, copiado, exportado;
     private string nombreNuevo = "", nombreRenombre = "";
     private string? errorNombre;
     private Guid? renombrando, confirmando, categoriaCargada;
@@ -251,6 +259,62 @@
 
     [JSInvokable]
     public Task AtajoCopiar() => Copiar();
+
+    [JSInvokable]
+    public Task AtajoExportar() => ExportarArchivo();
+
+    protected override void OnInitialized() => Atajos.Comando += AlAtajo;
+
+    // Atajos con el foco fuera del editor (dentro, Monaco usa los suyos: ver notas.prepararEditor).
+    private void AlAtajo(string atajo) => _ = InvokeAsync(async () =>
+    {
+        if (categoria is null) return;
+        var indice = actual is null ? -1 : archivos.IndexOf(actual);
+        switch (atajo)
+        {
+            case Atajo.Nuevo: NuevoArchivo(); break;
+            case Atajo.Guardar: await Guardar(); break;
+            case Atajo.Exportar: await ExportarArchivo(); break;
+            case Atajo.Copiar: await Copiar(); break;
+            case Atajo.Favorito when actual is not null: await AlternarFavorito(actual); break;
+            case Atajo.Abajo when archivos.Count > 0: await Abrir(archivos[Math.Min(indice + 1, archivos.Count - 1)]); break;
+            case Atajo.Arriba when archivos.Count > 0: await Abrir(archivos[Math.Max(indice - 1, 0)]); break;
+            case Atajo.Eliminar when actual is not null:
+                // Primera vez pide confirmación; Supr otra vez (o Enter) elimina.
+                if (confirmando == actual.Id) await Eliminar(actual);
+                else confirmando = actual.Id;
+                break;
+            case Atajo.Abrir when actual is not null:
+                if (confirmando == actual.Id) await Eliminar(actual);
+                else if (editorListo && editor is not null) await editor.Focus();
+                break;
+            case Atajo.Escape:
+                (confirmando, creando, renombrando, errorNombre) = (null, false, null, null);
+                break;
+        }
+        StateHasChanged();
+    });
+
+    private async Task AlternarFavorito(Archivo a)
+    {
+        a.Favorito = !a.Favorito;
+        await Archivos.AlternarFavoritoAsync(a.Id);
+    }
+
+    private async Task ExportarArchivo()
+    {
+        if (actual is null || editor is null || !editorListo || categoria is null) return;
+        await Guardar(); // exporta lo que se ve, ya guardado
+        var archivo = actual;
+        var ruta = await Exportar.ArchivoAsync(archivo.Nombre, categoria.Extension,
+            Lenguajes.Obtener(categoria.Lenguaje).Nombre, await editor.GetValue());
+        if (ruta is null) return;
+        exportado = true;
+        StateHasChanged();
+        await Task.Delay(2000);
+        exportado = false;
+        StateHasChanged();
+    }
 
     private async Task Abrir(Archivo archivo)
     {
@@ -430,6 +494,7 @@
 
     public async ValueTask DisposeAsync()
     {
+        Atajos.Comando -= AlAtajo;
         espera?.Cancel();
         try
         {

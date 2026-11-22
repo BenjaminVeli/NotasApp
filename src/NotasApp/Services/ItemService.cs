@@ -94,6 +94,8 @@ public class ItemService(IDbContextFactory<LocalDbContext> fabrica)
 
     public Task EliminarAsync(Guid id) => ModificarAsync(id, i => i.Eliminado = true);
 
+    public Task AlternarFavoritoAsync(Guid id) => ModificarAsync(id, i => i.Favorito = !i.Favorito);
+
     /// <summary>"Recordar en N minutos" desde el aviso de una reunión.</summary>
     public Task PosponerAsync(Guid id, int minutos) =>
         ModificarAsync(id, i => i.PosponerHasta = DateTime.UtcNow.AddMinutes(minutos));

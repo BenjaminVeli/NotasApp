@@ -56,6 +56,8 @@ public class ArchivoService(IDbContextFactory<LocalDbContext> fabrica)
 
     public Task EliminarAsync(Guid id) => ModificarAsync(id, a => a.Eliminado = true);
 
+    public Task AlternarFavoritoAsync(Guid id) => ModificarAsync(id, a => a.Favorito = !a.Favorito);
+
     public async Task ReordenarAsync(IReadOnlyList<Guid> ids)
     {
         await using var db = await fabrica.CreateDbContextAsync();

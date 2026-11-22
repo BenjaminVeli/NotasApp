@@ -172,22 +172,40 @@ window.notas = {
             keybindings: [KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.KeyC],
             run: () => dotnet.invokeMethodAsync('AtajoCopiar'),
         });
+        editor.addAction({
+            id: 'notas.exportar', label: 'Exportar archivo',
+            keybindings: [KeyMod.CtrlCmd | KeyCode.KeyE],
+            run: () => dotnet.invokeMethodAsync('AtajoExportar'),
+        });
     },
 
     /**
-     * Atajos de toda la app. `atajos` es { "ctrl+k": "MetodoNet", ... }. Se escuchan en fase de
-     * captura para ganarle a Monaco (que usa Ctrl+K como inicio de combinaciones).
+     * Atajos de toda la app. `atajos` es { "ctrl+k": ["nombre", "cuando"], ... } y cada uno llama a
+     * .NET con Atajo(nombre). "cuando" decide según dónde esté el foco:
+     *  - "siempre": también escribiendo (Ctrl+K, Ctrl+N, Ctrl+1…).
+     *  - "noEditor": en todos lados salvo dentro de Monaco, que tiene el suyo (Ctrl+S, Ctrl+/, Ctrl+D…).
+     *  - "noCampos": solo si no se está escribiendo en un campo ni en el editor (flechas, Supr, Enter…).
+     * Se escucha en fase de captura para ganarle a Monaco (que usa Ctrl+K para combinaciones).
      */
     atajosGlobales(dotnet, atajos) {
         document.addEventListener('keydown', e => {
-            if (e.repeat) return;
-            const combo = [e.ctrlKey && 'ctrl', e.shiftKey && 'shift', e.altKey && 'alt', e.key.toLowerCase()]
+            const activo = document.activeElement;
+            if (activo?.dataset?.capturaAtajo !== undefined) return; // capturando un atajo en Configuración
+            const tecla = e.key.toLowerCase();
+            // En teclados en español "/" se escribe con Mayús+7: para símbolos no se cuenta Mayús.
+            const esSimbolo = e.key.length === 1 && !/[\p{L}\p{N}]/u.test(e.key);
+            const combo = [e.ctrlKey && 'ctrl', e.shiftKey && !esSimbolo && 'shift', e.altKey && 'alt', tecla]
                 .filter(Boolean).join('+');
-            const metodo = atajos[combo];
-            if (!metodo) return;
+            const atajo = atajos[combo];
+            if (!atajo) return;
+            const [nombre, cuando] = atajo;
+            const enEditor = !!activo?.closest?.('.monaco-editor');
+            const enCampo = enEditor || activo?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(activo?.tagName);
+            if ((cuando === 'noEditor' && enEditor) || (cuando === 'noCampos' && enCampo)) return;
+            if (e.repeat && !nombre.startsWith('arriba') && !nombre.startsWith('abajo')) { e.preventDefault(); return; }
             e.preventDefault();
             e.stopPropagation();
-            dotnet.invokeMethodAsync(metodo);
+            dotnet.invokeMethodAsync('Atajo', nombre);
         }, true);
     },
 

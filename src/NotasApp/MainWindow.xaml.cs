@@ -13,6 +13,12 @@ public partial class MainWindow : Window
         InitializeComponent();
         WebView.Services = App.Servicios;
         SourceInitialized += (_, _) => BarraTituloOscura();
+#if !DEBUG
+        // Sin atajos de navegador (F5/Ctrl+R recargarían la página, Ctrl+P imprimiría…).
+        // En desarrollo se dejan para poder abrir las herramientas con F12.
+        WebView.BlazorWebViewInitialized += (_, e) =>
+            e.WebView.CoreWebView2.Settings.AreBrowserAcceleratorKeysEnabled = false;
+#endif
     }
 
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)

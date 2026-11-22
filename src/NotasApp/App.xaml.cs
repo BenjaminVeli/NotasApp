@@ -71,6 +71,8 @@ public partial class App : Application
         servicios.AddSingleton<ConfiguracionService>();
         servicios.AddSingleton<AvisosService>();
         servicios.AddSingleton<NavegacionService>();
+        servicios.AddSingleton<AtajosService>();
+        servicios.AddSingleton<AtajoGlobalService>();
         Servicios = servicios.BuildServiceProvider();
 
         var fabrica = Servicios.GetRequiredService<IDbContextFactory<LocalDbContext>>();
@@ -83,6 +85,7 @@ public partial class App : Application
 
         ToastNotificationManagerCompat.OnActivated += AlActivarAviso;
         CrearBandeja();
+        Servicios.GetRequiredService<AtajoGlobalService>().Iniciar(AlternarVentana);
         Servicios.GetRequiredService<ConexionService>().Iniciar();
         Servicios.GetRequiredService<AvisosService>().Iniciar();
 
@@ -104,6 +107,13 @@ public partial class App : Application
         ventana.Topmost = true;
         ventana.Topmost = false;
         ventana.Focus();
+    }
+
+    /// <summary>Atajo global: si la ventana está al frente la oculta; si no, la muestra y la trae al frente.</summary>
+    private void AlternarVentana()
+    {
+        if (ventana is { IsVisible: true, IsActive: true }) ventana.Hide();
+        else MostrarVentana();
     }
 
     /// <summary>La primera vez que se cierra la ventana, explica que la app sigue en la bandeja.</summary>

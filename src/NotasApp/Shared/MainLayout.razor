@@ -5,6 +5,8 @@
 @inject ArchivoService Archivos
 @inject ConexionService Conexion
 @inject NavegacionService Navegacion
+@inject AtajosService Atajos
+@using NombreAtajo = NotasApp.Services.Atajo
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -68,10 +70,37 @@
     <PaletaBusqueda AlCerrar="() => buscando = false" />
 }
 
+@if (viendoAtajos)
+{
+    <AyudaAtajos AlCerrar="() => viendoAtajos = false" />
+}
+
 @code {
     private Dictionary<string, int> cuentas = [];
     private List<CategoriaResumen> categorias = [];
-    private bool creandoCategoria, recrearSortable, buscando;
+    private bool creandoCategoria, recrearSortable, buscando, viendoAtajos;
+
+    // Combinación → (atajo, cuándo aplica). Ver notas.atajosGlobales en app.js.
+    private static readonly Dictionary<string, string[]> MapaAtajos = new()
+    {
+        ["ctrl+k"] = ["buscar", "siempre"],
+        ["ctrl+n"] = [NombreAtajo.Nuevo, "siempre"],
+        ["ctrl+1"] = ["ir-notas", "siempre"],
+        ["ctrl+2"] = ["ir-reuniones", "siempre"],
+        ["ctrl+3"] = ["ir-codigo", "siempre"],
+        ["ctrl+/"] = ["ayuda", "noEditor"],
+        ["f1"] = ["ayuda", "siempre"],
+        ["ctrl+s"] = [NombreAtajo.Guardar, "noEditor"],
+        ["ctrl+e"] = [NombreAtajo.Exportar, "noEditor"],
+        ["ctrl+shift+c"] = [NombreAtajo.Copiar, "noEditor"],
+        ["ctrl+d"] = [NombreAtajo.Favorito, "noCampos"],
+        ["ctrl+enter"] = [NombreAtajo.Completar, "noCampos"],
+        ["delete"] = [NombreAtajo.Eliminar, "noCampos"],
+        ["arrowdown"] = [NombreAtajo.Abajo, "noCampos"],
+        ["arrowup"] = [NombreAtajo.Arriba, "noCampos"],
+        ["enter"] = [NombreAtajo.Abrir, "noCampos"],
+        ["escape"] = [NombreAtajo.Escape, "noCampos"],
+    };
     private int versionCategorias;
     private ElementReference listaCategorias;
     private DotNetObjectReference<MainLayout>? referencia;
@@ -94,8 +123,7 @@
             // Ruta pedida antes de que existiera la ventana (p. ej. clic en un aviso con la app oculta).
             if (Navegacion.TomarPendiente() is { } ruta) Navegar(ruta);
             referencia = DotNetObjectReference.Create(this);
-            await JS.InvokeVoidAsync("notas.atajosGlobales", referencia,
-                new Dictionary<string, string> { ["ctrl+k"] = nameof(AlternarBusqueda) });
+            await JS.InvokeVoidAsync("notas.atajosGlobales", referencia, MapaAtajos);
         }
         else if (!recrearSortable) return;
 
@@ -118,12 +146,38 @@
     private void AlCambiar() => _ = InvokeAsync(async () => { await Cargar(); StateHasChanged(); });
     private void AlCambiarConexion() => _ = InvokeAsync(StateHasChanged);
 
-    /// <summary>Ctrl+K: abre la búsqueda global (o la cierra si ya está abierta).</summary>
+    /// <summary>Llamado desde notas.atajosGlobales con el nombre del atajo pulsado.</summary>
     [JSInvokable]
-    public void AlternarBusqueda()
+    public void Atajo(string nombre)
     {
-        buscando = !buscando;
+        switch (nombre)
+        {
+            case "buscar":
+                // Ctrl+K abre la búsqueda, o la cierra si ya está abierta.
+                (buscando, viendoAtajos) = (!buscando, false);
+                break;
+            case "ayuda":
+                (viendoAtajos, buscando) = (!viendoAtajos, false);
+                break;
+            case "ir-notas": IrA(""); break;
+            case "ir-reuniones": IrA("reuniones"); break;
+            case "ir-codigo": IrA("codigo"); break;
+            case NombreAtajo.Escape when viendoAtajos:
+                viendoAtajos = false;
+                break;
+            default:
+                // Con una ventana encima, los atajos no llegan a la página de atrás.
+                if (buscando || viendoAtajos || creandoCategoria) return;
+                Atajos.Emitir(nombre);
+                return;
+        }
         StateHasChanged();
+    }
+
+    private void IrA(string ruta)
+    {
+        (buscando, viendoAtajos) = (false, false);
+        Nav.NavigateTo(ruta);
     }
 
     private void CategoriaCreada(Guid id)

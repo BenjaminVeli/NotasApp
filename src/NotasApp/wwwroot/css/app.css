@@ -756,6 +756,40 @@ label.opcion { cursor: pointer; }
     color: var(--text-3);
 }
 
+/* ---------- Atajos de teclado ---------- */
+/* Elemento elegido con ↑ ↓ */
+.cd.sel-teclado { border-color: rgba(10, 132, 255, .55); box-shadow: 0 0 0 1px rgba(10, 132, 255, .35); }
+
+.favorito.on { color: var(--yellow); }
+.favorito.on:hover { color: var(--yellow); background: rgba(255, 214, 10, .12); }
+
+kbd, .teclas kbd {
+    font: inherit;
+    font-size: 11px;
+    color: var(--text-nav);
+    background: var(--card-hover);
+    border: 1px solid var(--border);
+    border-bottom-width: 2px;
+    border-radius: 5px;
+    padding: 1px 6px;
+}
+.teclas { display: inline-flex; gap: 3px; white-space: nowrap; }
+.captura-atajo { width: 210px; text-align: center; border-color: var(--accent); caret-color: transparent; cursor: default; }
+.exito-campo { font-size: 11px; color: var(--success); padding-top: 4px; }
+
+.ayuda-atajos { display: flex; flex-direction: column; gap: 12px; max-height: 64vh; overflow-y: auto; }
+.ayuda-grupo-titulo { font-size: 11px; font-weight: 600; color: var(--text-2); margin-bottom: 4px; }
+.ayuda-fila {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 13px;
+    padding: 5px 0;
+    border-bottom: 1px solid var(--border-soft);
+}
+.ayuda-atajos .pista { font-size: 11px; }
+
 /* ---------- Estado vacío ---------- */
 .vacio {
     text-align: center;

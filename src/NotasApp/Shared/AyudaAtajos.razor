@@ -1,0 +1,59 @@
+@* Pantalla con la lista de atajos (Ctrl+/ o F1). *@
+@inject AtajoGlobalService AtajoGlobal
+
+<Modal Titulo="Atajos de teclado" AlCerrar="AlCerrar">
+    <div class="ayuda-atajos">
+        @foreach (var (grupo, atajos) in Grupos)
+        {
+            <div class="ayuda-grupo">
+                <div class="ayuda-grupo-titulo">@grupo</div>
+                @foreach (var (teclas, accion) in atajos)
+                {
+                    <div class="ayuda-fila">
+                        <span>@accion</span>
+                        <span class="teclas">
+                            @foreach (var t in teclas.Split('+')) { <kbd>@t</kbd> }
+                        </span>
+                    </div>
+                }
+            </div>
+        }
+        <div class="pista">Dentro del editor de código, Ctrl+D, Ctrl+/ y Supr hacen lo habitual de un editor (multicursor, comentar, borrar).</div>
+    </div>
+</Modal>
+
+@code {
+    [Parameter] public EventCallback AlCerrar { get; set; }
+
+    private IEnumerable<(string, (string, string)[])> Grupos =>
+    [
+        ("Desde cualquier lugar", [(AtajoGlobal.Actual.ToString(), "Mostrar u ocultar la app")]),
+        ("General",
+        [
+            ("Ctrl+K", "Búsqueda global"),
+            ("Ctrl+N", "Nuevo elemento en la sección actual"),
+            ("Ctrl+1", "Ir a Notas"),
+            ("Ctrl+2", "Ir a Reuniones"),
+            ("Ctrl+3", "Ir a Código"),
+            ("Ctrl+/", "Esta lista de atajos (también F1)"),
+            ("Esc", "Cerrar ventana, búsqueda o edición"),
+        ]),
+        ("Notas y reuniones",
+        [
+            ("↑+↓", "Elegir elemento"),
+            ("Enter", "Editar el elegido"),
+            ("Ctrl+Enter", "Marcar como completado"),
+            ("Ctrl+D", "Marcar o quitar de favoritos"),
+            ("Supr", "Eliminar (pide confirmación)"),
+        ]),
+        ("Código",
+        [
+            ("Ctrl+S", "Guardar archivo"),
+            ("Ctrl+E", "Exportar el archivo actual"),
+            ("Ctrl+Mayús+C", "Copiar todo el archivo"),
+            ("↑+↓", "Archivo anterior / siguiente (fuera del editor)"),
+            ("Ctrl+D", "Favorito (fuera del editor)"),
+            ("Supr", "Eliminar archivo (fuera del editor)"),
+        ]),
+    ];
+}
