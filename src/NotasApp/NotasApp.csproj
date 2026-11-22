@@ -12,10 +12,17 @@
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <Product>Mi espacio</Product>
     <AssemblyTitle>Mi espacio</AssemblyTitle>
+    <!-- Al publicar, GitHub Actions la reemplaza por la de la etiqueta (v1.2.3 → 1.2.3). -->
+    <Version>1.0.0</Version>
+    <!-- Main propio (Program.cs): Velopack tiene que correr antes que WPF. -->
+    <StartupObject>NotasApp.Program</StartupObject>
   </PropertyGroup>
 
   <ItemGroup>
     <Resource Include="Assets\app.ico" />
+    <!-- App.xaml como página normal, para que WPF no genere su propio Main. -->
+    <ApplicationDefinition Remove="App.xaml" />
+    <Page Include="App.xaml" />
   </ItemGroup>
 
   <ItemGroup>
@@ -31,6 +38,7 @@
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.4" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.15" />
     <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.15" />
+    <PackageReference Include="Velopack" Version="1.2.161" />
   </ItemGroup>
 
 </Project>

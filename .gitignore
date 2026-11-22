@@ -16,6 +16,7 @@
 
 # Publicación e instalador (Velopack, fase 13)
 publish/
+publicar/
 [Rr]eleases/
 *.nupkg
 

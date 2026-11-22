@@ -50,7 +50,8 @@ public readonly record struct Combinacion(bool Ctrl, bool Alt, bool Shift, bool 
 /// </summary>
 public sealed class AtajoGlobalService(ConfiguracionService config) : IDisposable
 {
-    public const string PorDefecto = "Ctrl+Alt+N";
+    // En desarrollo otra combinación, para no chocar con la app instalada.
+    public const string PorDefecto = Entorno.Desarrollo ? "Ctrl+Alt+Mayús+N" : "Ctrl+Alt+N";
 
     private const int Id = 0x4E41; // "NA"
     private const int WmHotkey = 0x0312;

@@ -1,0 +1,76 @@
+# Publica una versión nueva de Mi espacio en GitHub Releases.
+#
+#   git tag v1.0.1
+#   git push origin v1.0.1
+#
+# Compila la app, arma el instalador (Setup.exe) y los paquetes de actualización con Velopack
+# y crea el Release. Las apps instaladas lo detectan solas y se actualizan.
+name: Publicar versión
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write   # crear el Release y subir los archivos
+
+jobs:
+  publicar:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # historial completo, para las notas de la versión
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Versión (de la etiqueta)
+        id: version
+        shell: pwsh
+        run: |
+          $version = '${{ github.ref_name }}'.TrimStart('v')
+          "numero=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Notas de la versión (commits desde la etiqueta anterior)
+        shell: pwsh
+        run: |
+          $anterior = git describe --tags --abbrev=0 '${{ github.ref_name }}^' 2>$null
+          $rango = if ($anterior) { "$anterior..${{ github.ref_name }}" } else { '${{ github.ref_name }}' }
+          $cambios = git log $rango --pretty=format:'- %s' --no-merges
+          "## Cambios`n`n$($cambios -join "`n")" | Out-File -Encoding utf8 notas.md
+
+      - name: Compilar
+        run: dotnet publish src/NotasApp -c Release -r win-x64 --self-contained -p:Version=${{ steps.version.outputs.numero }} -o publicar
+
+      - name: Herramientas (vpk)
+        run: dotnet tool restore
+
+      - name: Bajar la versión anterior (para actualizaciones delta)
+        continue-on-error: true   # la primera versión no tiene anterior
+        run: dotnet vpk download github --repoUrl https://github.com/${{ github.repository }} --token ${{ secrets.GITHUB_TOKEN }} -o Releases
+
+      - name: Armar instalador y paquetes
+        run: >
+          dotnet vpk pack
+          --packId MiEspacio
+          --packVersion ${{ steps.version.outputs.numero }}
+          --packDir publicar
+          --mainExe NotasApp.exe
+          --packTitle "Mi espacio"
+          --packAuthors "BenjaminVeli"
+          --icon src/NotasApp/Assets/app.ico
+          --shortcuts Desktop,StartMenuRoot
+          --releaseNotes notas.md
+          -o Releases
+
+      - name: Publicar en GitHub Releases
+        run: >
+          dotnet vpk upload github
+          --repoUrl https://github.com/${{ github.repository }}
+          --token ${{ secrets.GITHUB_TOKEN }}
+          --publish
+          --releaseName "Mi espacio ${{ steps.version.outputs.numero }}"
+          --tag ${{ github.ref_name }}
+          -o Releases

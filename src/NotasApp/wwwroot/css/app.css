@@ -790,6 +790,39 @@ kbd, .teclas kbd {
 }
 .ayuda-atajos .pista { font-size: 11px; }
 
+/* ---------- Actualizaciones y bienvenida ---------- */
+.actualizacion-lista {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 2px 4px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: var(--accent-soft);
+    border: 1px solid rgba(10, 132, 255, .35);
+    color: var(--text-nav);
+    font-size: 11px;
+    text-align: left;
+    line-height: 1.35;
+    animation: aparecer .25s var(--ease);
+}
+.actualizacion-lista .ti { font-size: 20px; color: var(--accent); }
+.actualizacion-lista b { color: var(--accent); font-weight: 600; }
+.actualizacion-lista:hover { background: rgba(10, 132, 255, .24); }
+
+.icono-acerca { width: 40px; height: 40px; flex: none; }
+.version { font-size: 12px; color: var(--text-2); margin-left: 6px; }
+.barra-progreso { height: 4px; border-radius: 4px; background: var(--card-hover); margin-top: 6px; overflow: hidden; }
+.barra-progreso div { height: 100%; background: var(--accent); transition: width .3s var(--ease); }
+
+.bienvenida { display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: var(--text-nav); }
+.bienvenida-icono { width: 56px; height: 56px; }
+.bienvenida p { margin: 0; line-height: 1.5; }
+.bienvenida ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.bienvenida li { display: flex; gap: 8px; align-items: baseline; line-height: 1.5; }
+.bienvenida li .ti { flex: none; }
+.bienvenida-opcion { background: #000; border-radius: 10px; }
+
 /* ---------- Estado vacío ---------- */
 .vacio {
     text-align: center;

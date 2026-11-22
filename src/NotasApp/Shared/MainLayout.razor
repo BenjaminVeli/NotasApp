@@ -6,6 +6,8 @@
 @inject ConexionService Conexion
 @inject NavegacionService Navegacion
 @inject AtajosService Atajos
+@inject ActualizacionesService Actualizaciones
+@inject ConfiguracionService Config
 @using NombreAtajo = NotasApp.Services.Atajo
 @inject NavigationManager Nav
 @inject IJSRuntime JS
@@ -45,6 +47,15 @@
             }
         </div>
 
+        @if (Actualizaciones.Estado == EstadoActualizacion.Lista)
+        {
+            <button class="actualizacion-lista" title="Cierra la app, instala la versión nueva y la vuelve a abrir"
+                    @onclick="() => ((App)System.Windows.Application.Current).ReiniciarParaActualizar()">
+                <i class="ti ti-arrow-up-circle"></i>
+                <span>Versión @Actualizaciones.NuevaVersion lista<br /><b>Reiniciar para actualizar</b></span>
+            </button>
+        }
+
         <div class="pie-sidebar">
             <div class="estado @Conexion.Estado.ToString().ToLowerInvariant()" title="@TooltipEstado">
                 <span class="punto"></span>@TextoEstado
@@ -75,10 +86,15 @@
     <AyudaAtajos AlCerrar="() => viendoAtajos = false" />
 }
 
+@if (bienvenida)
+{
+    <Bienvenida AlTerminar="() => bienvenida = false" />
+}
+
 @code {
     private Dictionary<string, int> cuentas = [];
     private List<CategoriaResumen> categorias = [];
-    private bool creandoCategoria, recrearSortable, buscando, viendoAtajos;
+    private bool creandoCategoria, recrearSortable, buscando, viendoAtajos, bienvenida;
 
     // Combinación → (atajo, cuándo aplica). Ver notas.atajosGlobales en app.js.
     private static readonly Dictionary<string, string[]> MapaAtajos = new()
@@ -111,7 +127,9 @@
         Items.Cambio += AlCambiar;
         Categorias.Cambio += AlCambiar;
         Archivos.Cambio += AlCambiar;
-        Conexion.Cambio += AlCambiarConexion;
+        Conexion.Cambio += Redibujar;
+        Actualizaciones.Cambio += Redibujar;
+        bienvenida = !Config.Actual.BienvenidaMostrada;
         Navegacion.Solicitud += Navegar;
         await Cargar();
     }
@@ -144,7 +162,7 @@
     private string Cuenta(string tipo) => cuentas.TryGetValue(tipo, out var n) && n > 0 ? n.ToString() : "";
 
     private void AlCambiar() => _ = InvokeAsync(async () => { await Cargar(); StateHasChanged(); });
-    private void AlCambiarConexion() => _ = InvokeAsync(StateHasChanged);
+    private void Redibujar() => _ = InvokeAsync(StateHasChanged);
 
     /// <summary>Llamado desde notas.atajosGlobales con el nombre del atajo pulsado.</summary>
     [JSInvokable]
@@ -167,7 +185,7 @@
                 break;
             default:
                 // Con una ventana encima, los atajos no llegan a la página de atrás.
-                if (buscando || viendoAtajos || creandoCategoria) return;
+                if (buscando || viendoAtajos || creandoCategoria || bienvenida) return;
                 Atajos.Emitir(nombre);
                 return;
         }
@@ -217,7 +235,8 @@
         Items.Cambio -= AlCambiar;
         Categorias.Cambio -= AlCambiar;
         Archivos.Cambio -= AlCambiar;
-        Conexion.Cambio -= AlCambiarConexion;
+        Conexion.Cambio -= Redibujar;
+        Actualizaciones.Cambio -= Redibujar;
         Navegacion.Solicitud -= Navegar;
         try { if (sortable is not null) await sortable.InvokeVoidAsync("destroy"); }
         catch (JSDisconnectedException) { }

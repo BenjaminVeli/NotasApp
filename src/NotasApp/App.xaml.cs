@@ -73,6 +73,7 @@ public partial class App : Application
         servicios.AddSingleton<NavegacionService>();
         servicios.AddSingleton<AtajosService>();
         servicios.AddSingleton<AtajoGlobalService>();
+        servicios.AddSingleton<ActualizacionesService>();
         Servicios = servicios.BuildServiceProvider();
 
         var fabrica = Servicios.GetRequiredService<IDbContextFactory<LocalDbContext>>();
@@ -88,6 +89,7 @@ public partial class App : Application
         Servicios.GetRequiredService<AtajoGlobalService>().Iniciar(AlternarVentana);
         Servicios.GetRequiredService<ConexionService>().Iniciar();
         Servicios.GetRequiredService<AvisosService>().Iniciar();
+        Servicios.GetRequiredService<ActualizacionesService>().Iniciar();
 
         // Al arrancar con Windows queda oculta en la bandeja. Si la abrió un clic en un
         // aviso, AlActivarAviso decide qué mostrar.
@@ -134,6 +136,17 @@ public partial class App : Application
         Shutdown();
     }
 
+    /// <summary>Instala la actualización descargada y vuelve a abrir la app (Velopack cierra el proceso).</summary>
+    public void ReiniciarParaActualizar()
+    {
+        Saliendo = true;
+        bandeja?.Dispose(); // si no, el ícono queda "fantasma" en la bandeja
+        // La versión nueva tiene que poder arrancar enseguida (instancia única).
+        try { mutex?.ReleaseMutex(); } catch (ApplicationException) { }
+        mutex?.Dispose();
+        Servicios.GetRequiredService<ActualizacionesService>().AplicarYReiniciar();
+    }
+
     private void CrearBandeja()
     {
         var menu = new ContextMenu();
@@ -147,7 +160,7 @@ public partial class App : Application
 
         bandeja = new TaskbarIcon
         {
-            ToolTipText = "Mi espacio",
+            ToolTipText = Entorno.Nombre,
             IconSource = new BitmapImage(new Uri("pack://application:,,,/Assets/app.ico")),
             ContextMenu = menu,
             NoLeftClickDelay = true,
@@ -179,6 +192,9 @@ public partial class App : Application
                 await Servicios.GetRequiredService<ItemService>().PosponerAsync(itemId, minutos);
                 break;
             case "descartar":
+                break;
+            case "actualizar":
+                await Dispatcher.InvokeAsync(ReiniciarParaActualizar);
                 break;
             case "abrir" when itemId != Guid.Empty:
                 // El parámetro "n" hace que se resalte otra vez aunque ya estuviera abierta.

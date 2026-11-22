@@ -82,7 +82,7 @@ public static class RutasDatos
     {
         get
         {
-            var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NotasApp");
+            var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NotasApp" + Entorno.Sufijo);
             Directory.CreateDirectory(dir);
             return dir;
         }

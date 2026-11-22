@@ -1,0 +1,59 @@
+@* Primer arranque: presentación breve y la casilla "Iniciar con Windows" (activada por defecto). *@
+@inject ConfiguracionService Config
+@inject AtajoGlobalService AtajoGlobal
+
+<Modal Titulo="Bienvenido a Mi espacio" AlCerrar="Empezar">
+    <div class="bienvenida">
+        <img src="img/icono.png" alt="" class="bienvenida-icono" />
+        <p>Tus notas, reuniones y fragmentos de código en un solo lugar. Todo se guarda en este equipo y funciona sin internet.</p>
+        <ul>
+            <li>
+                <i class="ti ti-bell" style="color:var(--accent)"></i>
+                <span>Te aviso antes de cada reunión, aunque cierres la ventana: la app sigue en la bandeja, junto al reloj.</span>
+            </li>
+            <li>
+                <i class="ti ti-keyboard" style="color:var(--purple)"></i>
+                <span>
+                    <span class="teclas">@foreach (var t in AtajoGlobal.Actual.ToString().Split('+')) { <kbd>@t</kbd> }</span>
+                    la abre desde cualquier programa, <span class="teclas"><kbd>Ctrl</kbd><kbd>K</kbd></span> busca y
+                    <kbd>F1</kbd> muestra todos los atajos.
+                </span>
+            </li>
+        </ul>
+        <label class="opcion bienvenida-opcion">
+            <div class="opcion-texto">
+                <div>Iniciar con Windows</div>
+                <div class="sub">Para que los avisos lleguen aunque no abras la app.</div>
+            </div>
+            <input type="checkbox" class="interruptor" @bind="iniciarConWindows" />
+        </label>
+        <div class="editor-pie">
+            <span style="margin-left:auto"></span>
+            <button class="btn-primario" @onclick="Empezar" @ref="boton">Empezar</button>
+        </div>
+    </div>
+</Modal>
+
+@code {
+    [Parameter] public EventCallback AlTerminar { get; set; }
+
+    // Activada por defecto en la app instalada; en desarrollo no, para no registrar bin\Debug.
+    private bool iniciarConWindows = !Entorno.Desarrollo;
+    private ElementReference boton;
+
+    protected override async Task OnAfterRenderAsync(bool primera)
+    {
+        if (primera) await boton.FocusAsync();
+    }
+
+    private async Task Empezar()
+    {
+        Config.Guardar(c =>
+        {
+            c.BienvenidaMostrada = true;
+            c.IniciarConWindows = iniciarConWindows;
+        });
+        InicioWindows.Fijar(iniciarConWindows);
+        await AlTerminar.InvokeAsync();
+    }
+}

@@ -2,6 +2,7 @@
 @inject ConfiguracionService Config
 @inject AvisosService Avisos
 @inject AtajoGlobalService AtajoGlobal
+@inject ActualizacionesService Actualizaciones
 @implements IDisposable
 
 <div class="pagina">
@@ -56,6 +57,30 @@
         </div>
     </div>
 
+    <div class="grupo-titulo">Actualizaciones</div>
+    <div class="grupo">
+        <div class="opcion">
+            <img src="img/icono.png" alt="" class="icono-acerca" />
+            <div class="opcion-texto">
+                <div>@Entorno.Nombre <span class="version">versión @Actualizaciones.Version</span></div>
+                <div class="sub">@TextoActualizacion</div>
+                @if (Actualizaciones.Estado == EstadoActualizacion.Descargando)
+                {
+                    <div class="barra-progreso"><div style="width:@(Actualizaciones.Progreso)%"></div></div>
+                }
+            </div>
+            @if (Actualizaciones.Estado == EstadoActualizacion.Lista)
+            {
+                <button class="btn-primario" @onclick="() => ((App)System.Windows.Application.Current).ReiniciarParaActualizar()">Reiniciar y actualizar</button>
+            }
+            else if (Actualizaciones.Instalada)
+            {
+                <button class="btn-secundario" disabled="@(Actualizaciones.Estado is EstadoActualizacion.Buscando or EstadoActualizacion.Descargando)"
+                        @onclick="Actualizaciones.RevisarAsync">Buscar actualizaciones</button>
+            }
+        </div>
+    </div>
+
     <div class="grupo-titulo">Avisos de reuniones</div>
     <div class="grupo">
         <div class="opcion">
@@ -91,6 +116,28 @@
         if (enfocarCaptura) { enfocarCaptura = false; await campoCaptura.FocusAsync(); }
     }
 
+    private string TextoActualizacion => Actualizaciones.Estado switch
+    {
+        EstadoActualizacion.NoDisponible => Entorno.Desarrollo
+            ? "Versión de desarrollo: las actualizaciones automáticas funcionan en la app instalada."
+            : "Las actualizaciones automáticas funcionan en la app instalada con el Setup (no en la versión portable).",
+        EstadoActualizacion.Buscando => "Buscando actualizaciones…",
+        EstadoActualizacion.Descargando => $"Descargando la versión {Actualizaciones.NuevaVersion}… {Actualizaciones.Progreso}%",
+        EstadoActualizacion.Lista => $"La versión {Actualizaciones.NuevaVersion} está lista. Si no reinicias ahora, se instala la próxima vez que abras la app.",
+        EstadoActualizacion.Error => $"No se pudo buscar actualizaciones: {Actualizaciones.Error}",
+        _ => Actualizaciones.UltimaRevision is { } cuando
+            ? $"Tienes la última versión (revisado a las {cuando:HH:mm}). Se revisa sola cada 4 horas."
+            : "Tienes la última versión. Se revisa sola al abrir la app y cada 4 horas.",
+    };
+
+    protected override void OnInitialized()
+    {
+        iniciarConWindows = InicioWindows.Registrado;
+        Actualizaciones.Cambio += Redibujar;
+    }
+
+    private void Redibujar() => _ = InvokeAsync(StateHasChanged);
+
     private void EmpezarCaptura()
     {
         // Se suelta el atajo actual: si no, al pulsarlo para probar ocultaría la app.
@@ -117,10 +164,10 @@
 
     public void Dispose()
     {
+        Actualizaciones.Cambio -= Redibujar;
         if (capturando) AtajoGlobal.Reanudar();
     }
 
-    protected override void OnInitialized() => iniciarConWindows = InicioWindows.Registrado;
 
     private void CambiarInicio(ChangeEventArgs e)
     {

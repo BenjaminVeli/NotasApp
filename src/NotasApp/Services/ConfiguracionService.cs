@@ -14,6 +14,8 @@ public class Configuracion
     public bool AvisoBandejaMostrado { get; set; }
     /// <summary>Atajo global para mostrar u ocultar la app ("Ctrl+Alt+N"). Null = el de por defecto.</summary>
     public string? AtajoGlobal { get; set; }
+    /// <summary>Ya se mostró la pantalla de bienvenida del primer arranque.</summary>
+    public bool BienvenidaMostrada { get; set; }
 }
 
 /// <summary>Configuración local del equipo, guardada en %LOCALAPPDATA%\NotasApp\config.json.</summary>

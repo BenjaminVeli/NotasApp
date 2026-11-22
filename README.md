@@ -12,20 +12,23 @@ Funciona sin internet: todo se guarda en el equipo. Tema oscuro estilo macOS/iOS
 
 ## Instalación
 
-### Versión portable (recomendada por ahora)
+### Con el instalador (recomendado)
 
-1. Descarga o copia `NotasApp-portable.zip` y descomprímelo en una carpeta fija, por ejemplo `C:\Users\<tu usuario>\Apps\NotasApp`.
-2. Abre `NotasApp.exe`.
+1. Entra a **[Releases](https://github.com/BenjaminVeli/NotasApp/releases/latest)** y descarga **`MiEspacio-win-Setup.exe`**.
+2. Ábrelo. Se instala solo, sin pedir permisos de administrador, y crea accesos directos «Mi espacio» en el escritorio y en el menú Inicio.
+3. La primera vez aparece una bienvenida con la opción **Iniciar con Windows** (activada).
 
 No hace falta instalar .NET (va incluido). Solo requiere **WebView2**, que ya viene con Windows 10 y 11.
 
-> La primera vez, Windows SmartScreen puede advertir que la app no es conocida (el `.exe` no está firmado). Elige **Más información → Ejecutar de todas formas**.
+> El instalador no está firmado: la primera vez, Windows SmartScreen puede decir que la app no es reconocida. Elige **Más información → Ejecutar de todas formas**.
 
-Para generar el `.zip` desde el código:
+**Actualizaciones automáticas**: la app revisa GitHub al abrirse y cada 4 horas. Si hay una versión nueva, la descarga en segundo plano y avisa con una notificación y un aviso azul en el sidebar: **Reiniciar para actualizar**. Si no reinicias, se instala sola la próxima vez que abras la app. En **Configuración → Actualizaciones** se ve la versión y se puede buscar a mano.
 
-```
-dotnet publish src/NotasApp -c Release -r win-x64 --self-contained -o publish/NotasApp-portable
-```
+**Desinstalar**: desde *Configuración de Windows → Aplicaciones instaladas → Mi espacio*. Se borran la app, los accesos directos y el inicio con Windows; **tus datos se conservan** (ver [Dónde se guardan los datos](#dónde-se-guardan-los-datos)).
+
+### Versión portable
+
+En cada Release también está **`MiEspacio-win-Portable.zip`**: se descomprime en una carpeta y se abre `NotasApp.exe`. No crea accesos directos ni se actualiza sola.
 
 ### Desde el código (para desarrollar)
 
@@ -116,7 +119,7 @@ Dentro del editor de código, `Ctrl+D`, `Ctrl+/` y `Supr` hacen lo habitual de u
 
 ## Dónde se guardan los datos
 
-Todo está en `%LOCALAPPDATA%\NotasApp\` en cada computadora:
+Todo está en `%LOCALAPPDATA%\NotasApp\` en cada computadora (la app instalada vive aparte, en `%LOCALAPPDATA%\MiEspacio\`, así actualizar o desinstalar nunca toca tus datos):
 
 | Archivo | Contenido |
 |---|---|
@@ -140,7 +143,42 @@ Al iniciar, la app crea las tablas en Neon y el indicador pasa a **En línea**. 
 
 ## Para desarrolladores
 
-**Stack**: WPF (.NET 10) + Blazor en `BlazorWebView` (WebView2), EF Core con SQLite (local) y Npgsql (Neon), BlazorMonaco, SortableJS, notificaciones de Windows (`CommunityToolkit.WinUI.Notifications`) y bandeja (`H.NotifyIcon.Wpf`).
+**Stack**: WPF (.NET 10) + Blazor en `BlazorWebView` (WebView2), EF Core con SQLite (local) y Npgsql (Neon), BlazorMonaco, SortableJS, notificaciones de Windows (`CommunityToolkit.WinUI.Notifications`), bandeja (`H.NotifyIcon.Wpf`) e instalador y actualizaciones con [Velopack](https://velopack.io).
+
+### Desarrollo y app instalada, separadas
+
+La versión de desarrollo (`dotnet run`, Debug) no comparte nada con la instalada, así se pueden tener las dos abiertas y las pruebas nunca tocan los datos reales:
+
+| | Desarrollo (Debug) | Instalada (Release) |
+|---|---|---|
+| Datos | `%LOCALAPPDATA%\NotasApp-dev\` | `%LOCALAPPDATA%\NotasApp\` |
+| Ventana | «Mi espacio (desarrollo)» | «Mi espacio» |
+| Atajo global | `Ctrl+Alt+Mayús+N` | `Ctrl+Alt+N` |
+| Iniciar con Windows | desactivado por defecto | activado por defecto |
+
+### Publicar una versión nueva
+
+1. Sube los cambios a `main`.
+2. Crea y sube una etiqueta con el número de versión:
+
+   ```
+   git tag v1.0.1
+   git push origin v1.0.1
+   ```
+
+3. GitHub Actions ([`.github/workflows/publicar.yml`](.github/workflows/publicar.yml)) compila la app, arma el instalador y los paquetes de actualización con Velopack (incluida la actualización *delta*, que solo descarga lo que cambió) y crea el Release con las notas generadas a partir de los commits. Las apps instaladas lo detectan solas.
+
+Para armar los paquetes en la propia computadora (por ejemplo, para probar):
+
+```
+dotnet tool restore
+dotnet publish src/NotasApp -c Release -r win-x64 --self-contained -p:Version=1.0.1 -o publicar
+dotnet vpk pack --packId MiEspacio --packVersion 1.0.1 --packDir publicar --mainExe NotasApp.exe --packTitle "Mi espacio" --icon src/NotasApp/Assets/app.ico -o Releases
+```
+
+Con la variable de entorno `NOTASAPP_ACTUALIZACIONES=<carpeta Releases>`, la app instalada busca actualizaciones en esa carpeta en vez de en GitHub.
+
+> El id del paquete es `MiEspacio` (y no `NotasApp`) a propósito: Velopack instala en `%LOCALAPPDATA%\<id>` y al desinstalar borra esa carpeta, que no puede ser la de los datos.
 
 ```
 src/NotasApp/
@@ -173,4 +211,4 @@ El plan completo y el diseño están en [`PLAN_NotasApp.md`](PLAN_NotasApp.md) y
 | 10 · Exportar e importar (categorías, todo en `.zip`, importar) | Parcial: exportar un archivo |
 | 11 · Favoritos y etiquetas | Parcial: estrella de favorito |
 | 12 · Pulido | Pendiente |
-| 13 · Instalador y actualizaciones automáticas | Pendiente |
+| 13 · Instalador y actualizaciones automáticas | ✅ (la cadena de Neon en el primer arranque llega con la fase 7) |

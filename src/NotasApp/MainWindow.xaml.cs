@@ -10,7 +10,12 @@ public partial class MainWindow : Window
     {
         // Evita el destello blanco mientras carga WebView2.
         Environment.SetEnvironmentVariable("WEBVIEW2_DEFAULT_BACKGROUND_COLOR", "FF000000");
+        // Caché del navegador interno separada por entorno: si la versión de desarrollo y la
+        // instalada comparten carpeta con opciones distintas, WebView2 no arranca.
+        Environment.SetEnvironmentVariable("WEBVIEW2_USER_DATA_FOLDER", System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), $"NotasApp{Entorno.Sufijo}.WebView2"));
         InitializeComponent();
+        Title = Entorno.Nombre;
         WebView.Services = App.Servicios;
         SourceInitialized += (_, _) => BarraTituloOscura();
 #if !DEBUG

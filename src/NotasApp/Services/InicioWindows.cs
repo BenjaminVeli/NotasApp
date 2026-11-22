@@ -8,7 +8,7 @@ public static class InicioWindows
     public const string ArgumentoSegundoPlano = "--segundo-plano";
 
     private const string Clave = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string Nombre = "NotasApp";
+    private const string Nombre = "NotasApp" + Entorno.Sufijo;
 
     private static string Comando => $"\"{Environment.ProcessPath}\" {ArgumentoSegundoPlano}";
 
